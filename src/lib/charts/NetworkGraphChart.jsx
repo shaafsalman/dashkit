@@ -26,10 +26,17 @@ import { useMeasuredBox } from "./useMeasuredBox";
  * its own selection.
  */
 
-const HUB = "#10B981";
-const NODE = "#3B82F6";
-const SEL = "#8B5CF6";
-const HOT = "#F59E0B";
+// Black/gray slate palette to match the Global Network & Cost section's
+// "slate" identity (the card is a dark gradient; nodes/edges in neutral grays
+// with white as the hub highlight). Selection/emphasis + tooltips use a bright
+// aquatic blue so the active item pops off the dark surface.
+const HUB = "#FFFFFF";
+const NODE = "#D4D4D8";
+const SEL = "#22D3EE";
+const HOT = "#38BDF8";
+const EDGE_PEER = "#52525B";
+// Solid halo behind nodes/labels that sits on the dark slate card surface.
+const HALO = "#1C1C20";
 const SANS = "'Space Grotesk', ui-sans-serif, system-ui, sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
@@ -209,7 +216,7 @@ const NetworkGraphChart = memo(
     // peer-to-peer routes that don't touch the hub in a cooler slate — so
     // the hub-and-spoke pattern reads at a glance, with cross-links as
     // legible but clearly secondary texture behind it.
-    const edgeColor = (e) => (e.from === hub || e.to === hub ? NODE : "#94A3B8");
+    const edgeColor = (e) => (e.from === hub || e.to === hub ? NODE : EDGE_PEER);
     const nodeOpacity = (c) => {
       if (!emph) return 1;
       if (c === emph || neighbours?.has(c)) return 1;
@@ -333,7 +340,7 @@ const NetworkGraphChart = memo(
           const badgeW = label.length * 6.2 + 12;
           return (
             <g key={`badge-${e.from}-${e.to}`} pointerEvents="none">
-              <rect x={p.mid.x - badgeW / 2} y={p.mid.y - 9} width={badgeW} height={18} rx={0} fill={t.surface} stroke={rank === 0 ? HOT : NODE} strokeWidth={1} />
+              <rect x={p.mid.x - badgeW / 2} y={p.mid.y - 9} width={badgeW} height={18} rx={0} fill="rgba(255,255,255,0.12)" stroke={rank === 0 ? HOT : NODE} strokeWidth={1} />
               <text x={p.mid.x} y={p.mid.y + 4} textAnchor="middle" fontFamily={MONO} fontSize={10.5} fontWeight={700} fill={rank === 0 ? HOT : NODE}>
                 {label}
               </text>
@@ -359,7 +366,7 @@ const NetworkGraphChart = memo(
                 cy={p.y}
                 r={isEmph ? p.r + 2 : p.r}
                 fill={p.hub ? HUB : NODE}
-                stroke={t.surface}
+                stroke={HALO}
                 strokeWidth={2.5}
                 style={{ transition: "r .16s ease" }}
               />
@@ -373,7 +380,7 @@ const NetworkGraphChart = memo(
                 fontFamily={SANS}
                 fontSize={11.5}
                 fontWeight={700}
-                stroke={t.surface}
+                stroke={HALO}
                 strokeWidth={3}
                 strokeLinejoin="round"
                 pointerEvents="none"
@@ -471,7 +478,7 @@ const NetworkGraphChart = memo(
                 key={s.label}
                 onClick={s.onClick}
                 style={{
-                  background: t.mode === "light" ? "#f8fafc" : "rgba(255,255,255,0.04)",
+                  background: "rgba(255,255,255,0.08)",
                   border: `1px solid ${t.control.border}`,
                   borderRadius: 0,
                   padding: "7px 10px",
@@ -500,7 +507,7 @@ const NetworkGraphChart = memo(
                     position: "absolute", top: 0, left: 0, zIndex: 4,
                     display: "flex", alignItems: "center", gap: 6,
                     padding: "3px 8px", borderRadius: 0,
-                    border: `1px solid ${SEL}`, background: t.surface,
+                    border: `1px solid ${SEL}`, background: "rgba(255,255,255,0.14)",
                     fontFamily: SANS, fontSize: 11, fontWeight: 700, color: SEL, cursor: "pointer",
                   }}
                 >
@@ -529,7 +536,7 @@ const NetworkGraphChart = memo(
                 {hub && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: HUB }} />Hub</span>}
                 <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: NODE }} />Airport</span>
                 {hub && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 12, height: 2, background: NODE }} />Hub route</span>}
-                <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 12, height: 2, background: "#94A3B8" }} />Direct route</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 12, height: 2, background: EDGE_PEER }} />Direct route</span>
                 <span>Thickness = passengers</span>
                 <span style={{ color: HOT }}>Busiest route</span>
               </>

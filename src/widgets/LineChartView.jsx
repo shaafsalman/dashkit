@@ -13,6 +13,7 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import ChartDataLabels from "chartjs-plugin-datalabels";
+import { isDarkMode } from "../isDarkMode";
 
 const SANS = "'Space Grotesk', ui-sans-serif, system-ui, sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -40,7 +41,51 @@ const LineChartView = ({
   showPercentage = false,
   showDollar = false,
   yearTogglePortal = null,
+  // Shared with VerticalBarView/AreaChartView (computed once in
+  // RankedDataWidget's sharedMaxValue) so the Y-axis stops moving when the
+  // view type switches — falls back to this view's own scan when omitted.
+  maxValue = null,
 }) => {
+  // Static read, not a hook: this component fully remounts on theme toggle
+  // (DashboardLayout keys the page Outlet on `theme`). Chart.js draws to
+  // canvas, which can't resolve CSS custom properties the way inline SVG
+  // does, so its chrome colors are literal here — kept in sync with the
+  // --chart-* vars in index.css by hand.
+  const dark = isDarkMode();
+  const chartChrome = dark
+    ? {
+        pointFill: "#202020",
+        legendText: "#d4d4d4",
+        tooltipBg: "#202020",
+        tooltipTitle: "#f5f5f5",
+        tooltipBody: "#d4d4d4",
+        tooltipBorder: "#3a3a3a",
+        gridLine: "rgba(255, 255, 255, 0.08)",
+        tick: "#d4d4d4",
+        axisBorder: "#3a3a3a",
+        labelHalo: "#202020",
+        labelHaloShadow: "rgba(32, 32, 32, 1)",
+        toggleActiveBg: "#202020",
+        toggleActiveText: "#f5f5f5",
+        toggleInactiveText: "#737373",
+      }
+    : {
+        pointFill: "#ffffff",
+        legendText: "#475569",
+        tooltipBg: "#ffffff",
+        tooltipTitle: "#111827",
+        tooltipBody: "#4B5563",
+        tooltipBorder: "#D1D5DB",
+        gridLine: "rgba(148, 163, 184, 0.18)",
+        tick: "#64748b",
+        axisBorder: "#e2e8f0",
+        labelHalo: "#ffffff",
+        labelHaloShadow: "rgba(255, 255, 255, 1)",
+        toggleActiveBg: "#ffffff",
+        toggleActiveText: "#111827",
+        toggleInactiveText: "#9ca3af",
+      };
+
   const parseMonth = (monthStr) => {
     const str = monthStr.toString().trim();
 
@@ -248,8 +293,11 @@ const LineChartView = ({
   const [hoveredDataset, setHoveredDataset] = useState(null);
   const [activeYear, setActiveYear] = useState(null);
   const chartRef = useRef(null);
-  const defaultBorderWidth = 7;
-  const defaultPointRadius = 5;
+  // 7px strokes with 5px dots read as a thick ribbon rather than a trend line.
+  // 2.5 went too far the other way and looked faint, so this sits between:
+  // clearly the primary mark on the plot, without swamping a bento tile.
+  const defaultBorderWidth = 3.5;
+  const defaultPointRadius = 4;
 
   const formatValue = (value) => {
     if (typeof value !== "number") return value;
@@ -297,6 +345,10 @@ const LineChartView = ({
 
   const getDataRange = () => {
     if (!chartData || chartData.length === 0) return { min: 0, max: 1 };
+
+    if (typeof maxValue === "number" && maxValue > 0) {
+      return { min: 0, max: maxValue };
+    }
 
     let allValues = [];
 
@@ -407,7 +459,7 @@ const LineChartView = ({
               data: nullifyAllZeroData(rawData),
               borderColor: color,
               backgroundColor: color + "15",
-              pointBackgroundColor: "#ffffff",
+              pointBackgroundColor: chartChrome.pointFill,
               pointBorderColor: color,
               pointBorderWidth: 3,
               pointRadius: defaultPointRadius,
@@ -431,7 +483,7 @@ const LineChartView = ({
             data: nullifyAllZeroData(rawData),
             borderColor: color,
             backgroundColor: color + "15",
-            pointBackgroundColor: "#ffffff",
+            pointBackgroundColor: chartChrome.pointFill,
             pointBorderColor: color,
             pointBorderWidth: 3,
             pointRadius: defaultPointRadius,
@@ -463,7 +515,7 @@ const LineChartView = ({
           data: nullifyAllZeroData(rawData),
           borderColor: color,
           backgroundColor: color + "15",
-          pointBackgroundColor: "#ffffff",
+          pointBackgroundColor: chartChrome.pointFill,
           pointBorderColor: color,
           pointBorderWidth: 3,
           pointRadius: defaultPointRadius,
@@ -486,7 +538,7 @@ const LineChartView = ({
         data: nullifyAllZeroData(rawData),
         borderColor: color,
         backgroundColor: color + "15",
-        pointBackgroundColor: "#ffffff",
+        pointBackgroundColor: chartChrome.pointFill,
         pointBorderColor: color,
         pointBorderWidth: 3,
         pointRadius: defaultPointRadius,
@@ -519,9 +571,9 @@ const LineChartView = ({
     maintainAspectRatio: false,
     layout: {
       padding: {
-        left: 8,
-        right: 8,
-        top: 10,
+        left: 2,
+        right: 6,
+        top: 2,
         bottom: 0,
       },
     },
@@ -536,38 +588,46 @@ const LineChartView = ({
         align: "end",
         labels: {
           usePointStyle: true,
-          pointStyle: "circle",
-          padding: 10,
+          // Rect to match the square swatches every other legend uses.
+          pointStyle: "rect",
+          // Legend was claiming ~50px of plot height on its own: 13px type,
+          // 10px padding, and circles drawn from the old 7px line weight.
+          padding: 6,
           font: {
-            size: isMobile ? 12 : 13,
-            weight: "600",
+            size: isMobile ? 10 : 11,
+            weight: "700",
             family: SANS,
           },
-          color: "#1e293b",
-          boxWidth: 8,
-          boxHeight: 8,
+          color: chartChrome.legendText,
+          boxWidth: 6,
+          boxHeight: 6,
         },
       },
       tooltip: {
         enabled: true,
-        backgroundColor: "#ffffff",
-        titleColor: "#111827",
-        bodyColor: "#4B5563",
-        borderColor: "#D1D5DB",
-        borderWidth: 2,
+        backgroundColor: chartChrome.tooltipBg,
+        titleColor: chartChrome.tooltipTitle,
+        bodyColor: chartChrome.tooltipBody,
+        borderColor: chartChrome.tooltipBorder,
+        // 1px hairline + tighter padding to match HoverTooltip and the
+        // Recharts CustomTooltips; 2px/16px made this the heaviest tooltip.
+        borderWidth: 1,
         cornerRadius: 0,
-        padding: 16,
+        padding: 10,
         displayColors: true,
-        boxPadding: 6,
+        boxPadding: 4,
         usePointStyle: true,
-        titleMarginBottom: 8,
-        bodySpacing: 6,
-        font: {
-          size: isMobile ? 12 : 13,
-          family: SANS,
+        boxWidth: 9,
+        boxHeight: 9,
+        titleMarginBottom: 6,
+        bodySpacing: 4,
+        bodyFont: {
+          size: isMobile ? 11 : 12,
+          weight: "600",
+          family: MONO,
         },
         titleFont: {
-          size: isMobile ? 13 : 14,
+          size: isMobile ? 11 : 12,
           weight: "700",
           family: SANS,
         },
@@ -588,84 +648,81 @@ const LineChartView = ({
         },
       },
       datalabels: {
+        // Previously every point on every series got a bordered, filled box —
+        // 12 months × 2 series is 24 boxes that overlap each other and the
+        // line itself. Values now appear only at the points that carry meaning
+        // (each series' min, max and final point), unboxed, with the rest
+        // available on hover. Matches DualLineChart's restraint.
+        // 'auto' shows every label it can and drops only the ones that would
+        // actually overlap a neighbour. Filtering to min/max/last instead hid
+        // most of the values even when there was room for them.
         display: function (context) {
-          const chart = context.chart;
-          const datasets = chart.data.datasets;
-          if (datasets.length <= 1) return true;
-
-          const allValues = [];
-          datasets.forEach((ds) => {
-            ds.data.forEach((v) => {
-              if (v > 0) allValues.push(v);
-            });
-          });
-          const maxVal = Math.max(...allValues);
-          const currentVal = context.dataset.data[context.dataIndex];
-
-          if (currentVal < maxVal * 0.05) return false;
-          return true;
+          const value = context.dataset.data[context.dataIndex];
+          if (value === 0 || value === null || value === undefined) return false;
+          return "auto";
         },
         anchor: "end",
+        // Alternating top/bottom by dataset index worked for two series but
+        // collided badly at three (Revenue/Costs/Profit all landing in the same
+        // band). Every label now sits above its own point and 'auto' resolves
+        // what genuinely cannot fit — with the offset stepped per series so
+        // stacked lines do not compete for the same strip.
         align: "top",
         clamp: true,
         offset: function (context) {
-          const datasetIndex = context.datasetIndex;
-          return datasetIndex === 0 ? 8 : 24;
+          return 4 + (context.datasetIndex % 3) * 9;
         },
+        // Tint each label to its own series so an unboxed number is still
+        // unambiguously attributable when two lines run close together.
         color: function (context) {
           return context.dataset.borderColor;
         },
-        color: "#1e293b",
         font: {
-          size: isMobile ? 10 : 11,
-          weight: "700",
+          size: isMobile ? 11 : 12,
+          weight: "800",
           family: MONO,
         },
-        formatter: function (value, context) {
+        formatter: function (value) {
           if (value === 0 || value === null || value === undefined) return "";
           return formatValue(value);
         },
-        backgroundColor: function (context) {
-          return "rgba(255, 255, 255, 0.9)";
-        },
-        borderColor: function (context) {
-          return context.dataset.borderColor + "60";
-        },
-        borderRadius: 0,
-        borderWidth: 1,
-        padding: {
-          top: 4,
-          bottom: 4,
-          left: 6,
-          right: 6,
-        },
-        textShadowColor: "rgba(255, 255, 255, 0.8)",
-        textShadowBlur: 2,
+        // No box, but a solid white halo so the number stays legible where it
+        // crosses a gridline or the other series' line.
+        backgroundColor: null,
+        borderWidth: 0,
+        padding: 0,
+        textStrokeColor: chartChrome.labelHalo,
+        textStrokeWidth: 3,
+        textShadowColor: chartChrome.labelHaloShadow,
+        textShadowBlur: 6,
       },
     },
     scales: {
+      // Same axis treatment as every Recharts chart in the app (see
+      // lib/charts/theme.js's AXIS_*/GRID constants): no visible axis border,
+      // only the horizontal (y-tick) gridlines, calm gray/mono tick labels.
       x: {
         grid: {
-          display: true,
-          color: "rgba(148, 163, 184, 0.15)",
-          lineWidth: 1,
-          drawBorder: true,
-          drawOnChartArea: true,
-          drawTicks: true,
+          // Vertical gridlines off — Recharts charts only ever draw the
+          // horizontal ones (CartesianGrid vertical={false}).
+          display: false,
         },
         ticks: {
-          color: "#475569",
+          color: chartChrome.tick,
           font: {
-            size: isMobile ? 11 : 12,
+            size: isMobile ? 10 : 11,
             weight: "600",
             family: SANS,
           },
           maxRotation: isMobile ? 45 : 0,
-          padding: 6,
+          // Drops month labels rather than shrinking the plot when the tile is
+          // narrow — 12 labels never fit a 3-column bento tile.
+          autoSkip: true,
+          autoSkipPadding: 8,
+          padding: 4,
         },
         border: {
-          color: "#cbd5e1",
-          width: 1,
+          display: false,
         },
       },
       y: {
@@ -673,27 +730,31 @@ const LineChartView = ({
         max: dataRange.max,
         grid: {
           display: true,
-          color: "rgba(148, 163, 184, 0.15)",
+          color: chartChrome.gridLine,
           lineWidth: 1,
-          drawBorder: true,
+          // Dashed, matching every Recharts CartesianGrid in the app
+          // (strokeDasharray="4 4").
+          borderDash: [4, 4],
           drawOnChartArea: true,
-          drawTicks: true,
+          drawTicks: false,
         },
         ticks: {
-          color: "#475569",
+          color: chartChrome.tick,
           font: {
-            size: isMobile ? 11 : 12,
-            weight: "600",
+            size: 10,
+            weight: "500",
             family: MONO,
           },
-          padding: 6,
+          // Chart.js was generating up to 9 gridlines; 5 is enough to read a
+          // trend and gives the plot back the vertical space.
+          maxTicksLimit: 5,
+          padding: 4,
           callback: function (value) {
             return formatValue(value);
           },
         },
         border: {
-          color: "#cbd5e1",
-          width: 1,
+          display: false,
         },
       },
     },
@@ -744,22 +805,25 @@ const LineChartView = ({
   }, [compareMode, metrics, chartData]);
 
   const yearToggle = showYearSwitcher && (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-0.5 bg-gray-100 p-0.5">
       {detectedYears.map((year) => (
         <button
           key={year}
           onClick={() => setActiveYear(year)}
           style={{
-            fontSize: 12,
+            // Small white-chip-on-gray-track segment, matching the footer's
+            // view switcher but a size down — it is a scope filter, not a
+            // primary action, so it should not read as a pair of buttons.
+            fontSize: 10,
             fontWeight: 700,
             fontFamily: MONO,
-            padding: "3px 12px",
+            padding: "2px 7px",
             borderRadius: 0,
-            border: activeYear === year ? "1px solid #1F2937" : "1px solid #D1D5DB",
-            background: activeYear === year ? "#1F2937" : "#F9FAFB",
-            color: activeYear === year ? "#ffffff" : "#4B5563",
+            border: "none",
+            background: activeYear === year ? chartChrome.toggleActiveBg : "transparent",
+            color: activeYear === year ? chartChrome.toggleActiveText : chartChrome.toggleInactiveText,
             cursor: "pointer",
-            transition: "background-color 0.15s, border-color 0.15s",
+            transition: "background-color 0.15s, color 0.15s",
           }}
         >
           {year}

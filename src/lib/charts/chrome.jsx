@@ -1,4 +1,4 @@
-import React, { memo, useState, useEffect, useRef } from "react";
+import React, { memo, useState, useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   Filter, ArrowUpDown, MoreHorizontal, MoreVertical, ChevronDown,
@@ -24,13 +24,65 @@ export const Icons = {
   expand: Maximize2, close: X, check: Check, download: Download,
 };
 
+/**
+ * FitText — single-line label that NEVER truncates. When the available width
+ * is smaller than the text needs at `maxSize`, the font scales down (never
+ * below `minSize`) instead of clipping to an ellipsis. Text width comes from
+ * the element's own scrollWidth, which already reflects the current font, so
+ * the scale formula is self-stabilizing:
+ *
+ *     target = currentSize * availableWidth / textWidth
+ *
+ * and it recovers back up to `maxSize` when space frees up. `style` is spread
+ * onto the span (fontWeight, letterSpacing, color, ...).
+ */
+const FitText = memo(({ text, maxSize, minSize = 9, style = {} }) => {
+  const ref = useRef(null);
+  const [size, setSize] = useState(maxSize);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const fit = () => {
+      const wrap = el.parentElement;
+      if (!wrap) return;
+      const avail = wrap.clientWidth;
+      const textW = el.scrollWidth;
+      if (!avail || !textW) return;
+      const clamped = Math.max(minSize, Math.min(maxSize, (size * avail) / textW));
+      if (Math.abs(size - clamped) > 0.1) setSize(clamped);
+    };
+    fit();
+    let ro;
+    if (typeof ResizeObserver !== "undefined" && el.parentElement) {
+      ro = new ResizeObserver(fit);
+      ro.observe(el.parentElement);
+    }
+    return () => ro && ro.disconnect();
+  }, [text, maxSize, minSize, size]);
+
+  return (
+    <span
+      ref={ref}
+      style={{
+        display: "inline-block",
+        whiteSpace: "nowrap",
+        fontSize: size,
+        lineHeight: 1.25,
+        ...style,
+      }}
+    >
+      {text}
+    </span>
+  );
+});
+FitText.displayName = "FitText";
+
 /* inject shared CSS once */
 if (typeof document !== "undefined" && !document.getElementById("cc-css")) {
   const s = document.createElement("style");
   s.id = "cc-css";
   s.textContent = `
-    .cc-card{animation:ccIn .45s cubic-bezier(.4,0,.2,1) both}
-    @keyframes ccIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
     .cc-body{display:flex;flex-direction:column;justify-content:center;min-height:0}
     .cc-body svg{max-height:var(--cc-h,200px)!important;width:100%;display:block}
     .cc-body.cc-fluid{justify-content:stretch}
@@ -140,7 +192,7 @@ const Menu = memo(({ theme: t, options = [], value, multi, onPick, onClose, anch
       style={{
         ...pos, zIndex: 2000,
         minWidth: 168, padding: 6, borderRadius: 12,
-        background: t.mode === "light" ? "#ffffff" : "#1a1f2e", backdropFilter: t.backdrop, WebkitBackdropFilter: t.backdrop,
+        background: t.mode === "light" ? "#ffffff" : "#202020", backdropFilter: t.backdrop, WebkitBackdropFilter: t.backdrop,
         border: `1px solid ${t.control.border}`, boxShadow: "0 12px 32px -12px rgba(0,0,0,0.35)",
       }}
     >
@@ -258,16 +310,19 @@ export const ChangePill = memo(({ value = 0, color, theme: t }) => {
 ChangePill.displayName = "ChangePill";
 
 /* consistent tooltip — charts render this inside a position:relative wrapper */
-export const ChartTooltip = memo(({ theme: t, left, top, title, rows = [], visible }) => {
+export const ChartTooltip = memo(({ theme: t, left, top, title, rows = [], visible, flip = false }) => {
   if (!visible) return null;
   return (
     <div
       style={{
-        position: "absolute", left, top, transform: "translate(-50%, -100%)",
+        // `flip` renders BELOW the anchor instead of above it — for anchors
+        // near the top of the plot, where translate(-100%) pushed the box
+        // past the card edge and it drew clipped.
+        position: "absolute", left, top, transform: flip ? "translate(-50%, 12px)" : "translate(-50%, -100%)",
         pointerEvents: "none", zIndex: 30, minWidth: 120, padding: "8px 12px",
-        borderRadius: 10, background: t.mode === "light" ? "rgba(255,255,255,0.92)" : "rgba(20,24,33,0.92)",
+        borderRadius: 10, background: t.tooltip?.bg || (t.mode === "light" ? "rgba(255,255,255,0.92)" : "rgba(20,24,33,0.92)"),
         backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
-        border: `1px solid ${t.control.border}`, boxShadow: "0 10px 28px -10px rgba(0,0,0,0.35)",
+        border: `1px solid ${t.tooltip?.border || t.control.border}`, boxShadow: "0 10px 28px -10px rgba(0,0,0,0.35)",
         fontSize: 12, whiteSpace: "nowrap", color: t.text.primary,
       }}
     >
@@ -332,6 +387,7 @@ export const ChartCard = memo(
     theme: t, title, icon, iconColor, subtitle, controls, onControl, headerRight,
     headline, footer, footerDetailed, width, size = "m", className = "", style,
     expandable = false, floatingHeader = false, radius, compact = false, children,
+    headerMarginBottom = 14,
   }) => {
     // `radius` is a direct prop so callers can flatten corners without
     // knowing to spread theme internals (`theme={{ ...LIGHT_THEME, radius: 0 }}`).
@@ -415,7 +471,7 @@ export const ChartCard = memo(
     );
 
     const Header = (title || subtitle || (!floatingHeader && (controls || headerRight || expandable))) ? (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14, paddingRight: floatingHeader ? (headline?.legend ? 236 : 88) : 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14, paddingRight: floatingHeader ? (headline?.legend ? 150 : 84) : 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
           {icon && (
             <span style={{ display: "flex", alignItems: "center", flexShrink: 0, color: iconColor || t.accent }}>
@@ -424,16 +480,11 @@ export const ChartCard = memo(
           )}
           <div style={{ minWidth: 0 }}>
             {title && (
-              <div
-                style={{
-                  fontSize: compact ? 13 : smallChart ? 14 : 16.5,
-                  fontWeight: 700, letterSpacing: "-0.015em",
-                  color: t.text.primary, lineHeight: 1.25,
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}
-              >
-                {title}
-              </div>
+              <FitText
+                text={title}
+                maxSize={compact ? 15 : smallChart ? 16 : 20}
+                style={{ fontWeight: 700, letterSpacing: "-0.02em", color: t.text.primary }}
+              />
             )}
             {subtitle && <div style={{ ...SUBTITLE_STYLE(t), marginTop: 1 }}>{subtitle}</div>}
           </div>
@@ -463,7 +514,7 @@ export const ChartCard = memo(
                 <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                   <span
                     style={{
-                      fontSize: hover ? 16 : 28, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1,
+                      fontSize: hover ? 18 : 31, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1,
                       color: t.text.primary, transition: "font-size 0.25s cubic-bezier(.4,0,.2,1)",
                     }}
                   >

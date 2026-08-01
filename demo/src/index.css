@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Chart chrome (gridlines/ticks/tooltip) read via var(...) directly in SVG
+   stroke/fill props by the Recharts-based widget views — same tokens as
+   lib/charts/theme.js's LIGHT_THEME/DARK_THEME, kept in sync by hand since
+   inline SVG can't consult resolveTheme() for these. Toggled by the same
+   `.dark` class on <html> that resolveTheme()'s isDarkMode() reads. */
+:root {
+  --chart-grid: rgba(15, 23, 42, 0.1);
+  --chart-tick: #64748b;
+  --chart-tick-dim: #94a3b8;
+  --chart-tick-strong: #1e293b;
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-border: #d1d5db;
+  --chart-hover-cursor: rgba(15, 23, 42, 0.06);
+}
+
+html.dark {
+  --chart-grid: rgba(255, 255, 255, 0.08);
+  --chart-tick: #d4d4d4;
+  --chart-tick-dim: #a3a3a3;
+  --chart-tick-strong: #f5f5f5;
+  --chart-tooltip-bg: #202020;
+  --chart-tooltip-border: #3a3a3a;
+  --chart-hover-cursor: rgba(255, 255, 255, 0.06);
+}
+
+html.dark body {
+  background: #141414;
+}

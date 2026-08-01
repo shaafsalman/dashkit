@@ -154,7 +154,11 @@ const StackedBarChart = memo(
     const tip = hover != null ? cols[hover] : null;
     // position the tooltip over the hovered column as viewBox-relative percentages
     const tipLeft = tip ? `${Math.max(8, Math.min((tip.cx / W) * 100, 88))}%` : "50%";
-    const tipTop = tip ? `${(Math.min(...tip.segs.map((s) => s.topY ?? TOP), BASE) / H) * 100}%` : "40%";
+    const tipTopPct = tip ? (Math.min(...tip.segs.map((s) => s.topY ?? TOP), BASE) / H) * 100 : 40;
+    const tipTop = `${tipTopPct}%`;
+    // a tall stack tops out near the card edge — flip the tooltip below the
+    // anchor there, or it renders clipped by the card boundary
+    const tipFlip = tipTopPct < 35;
 
     // filter control + legend share this state
     const filterItems = series.map((sr) => ({
@@ -187,7 +191,11 @@ const StackedBarChart = memo(
     );
 
     const renderChart = (detailed) => (
-      <div ref={boxRef} style={{ position: "relative", width: "100%", height: plotH }}>
+      <div
+        ref={boxRef}
+        style={{ position: "relative", width: "100%", height: plotH }}
+        onMouseLeave={() => setHover(null)}
+      >
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" role="img" aria-label={title}>
           <defs>
             <pattern id="tp-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -222,15 +230,13 @@ const StackedBarChart = memo(
             <g
               key={c.label}
               onMouseEnter={() => setHover(c.i)}
-              onMouseMove={() => setHover(c.i)}
-              onMouseLeave={() => setHover((h) => (h === c.i ? null : h))}
               style={{ cursor: "pointer" }}
             >
               <rect x={c.cx - barW / 2 - 6} y={TOP} width={barW + 12} height={BASE - TOP} fill="transparent" />
               {c.segs.map(
                 (s) =>
                   s.value > 0 && (
-                    <g key={s.key} opacity={hover == null || hover === c.i ? 1 : 0.45}>
+                    <g key={s.key} opacity={hover == null || hover === c.i ? 1 : 0.45} style={{ transition: "opacity .18s ease" }}>
                       <rect x={s.x ?? c.cx - barW / 2} y={s.topY} width={s.w ?? barW} height={s.h} rx={Math.min(8, (s.w ?? barW) / 2, s.h / 2)} fill={`url(#tp-${s.key})`} />
                       <rect x={s.x ?? c.cx - barW / 2} y={s.topY} width={s.w ?? barW} height={s.h} rx={Math.min(8, (s.w ?? barW) / 2, s.h / 2)} fill="url(#tp-hatch)" />
                       {/* detailed-only: value label centered in each segment (when it fits) */}
@@ -261,6 +267,7 @@ const StackedBarChart = memo(
           visible={!!tip}
           left={tipLeft}
           top={tipTop}
+          flip={tipFlip}
           title={tip ? tip.tooltipLabel || tip.label : ""}
           rows={
             tip

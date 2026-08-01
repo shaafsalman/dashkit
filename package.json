@@ -1,8 +1,8 @@
 {
-  "name": "chart-kit",
-  "version": "0.1.0",
+  "name": "dashkit",
+  "version": "0.2.0",
   "private": true,
-  "description": "Standalone React chart component library (Recharts / Chart.js / ECharts) extracted for reuse across projects.",
+  "description": "Standalone React dashboard component kit — charts (Recharts / Chart.js / ECharts), ranked-data widgets, gradient/solid stat cards, a themed-section system, and a geographic route map — extracted for reuse across projects.",
   "type": "module",
   "main": "src/index.js",
   "module": "src/index.js",
@@ -17,6 +17,7 @@
     "echarts-for-react": "^3.0.6",
     "lucide-react": "^0.468.0",
     "react-chartjs-2": "^5.3.0",
+    "react-simple-maps": "^3.0.0",
     "recharts": "^2.15.1"
   }
 }

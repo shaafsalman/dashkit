@@ -30,6 +30,12 @@ export {
   SERIES_PALETTE,
   lighten,
   darken,
+  CHART_FONT_SANS,
+  CHART_FONT_MONO,
+  AXIS_CATEGORY_TICK,
+  AXIS_VALUE_TICK,
+  AXIS_LINE_PROPS,
+  AXIS_GRID_PROPS,
 } from "./theme";
 export { ChartCard, HeaderControls, Legend, ChangePill, Stat, Icons, ChartTooltip, SIZES } from "./chrome";
 

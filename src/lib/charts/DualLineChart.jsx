@@ -1,5 +1,6 @@
 import React, { useMemo, memo, useState, useRef } from "react";
-import { resolveTheme } from "./theme";
+import { createPortal } from "react-dom";
+import { resolveTheme, AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_LINE_PROPS, AXIS_GRID_PROPS } from "./theme";
 import { ChartCard, Stat, SIZES } from "./chrome";
 import {
   ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid,
@@ -14,24 +15,23 @@ const DEFAULTS = {
   after: { label: "After", color: "#e0653a", values: [410, 380, 360, 420, 470, 560] },
 };
 
-const toQuarterly = (labels, before, after) => {
+// Buckets N series at once (was hardcoded to exactly before/after).
+const toQuarterly = (labels, seriesList) => {
   const qLabels = [];
-  const bVals = [];
-  const aVals = [];
+  const sums = seriesList.map(() => []);
   for (let i = 0; i < labels.length; i += 3) {
     qLabels.push(`Q${qLabels.length + 1}`);
-    let bs = 0, as = 0;
-    for (let j = i; j < Math.min(i + 3, labels.length); j++) {
-      bs += Number(before.values?.[j] || 0);
-      as += Number(after.values?.[j] || 0);
-    }
-    bVals.push(bs);
-    aVals.push(as);
+    seriesList.forEach((s, si) => {
+      let sum = 0;
+      for (let j = i; j < Math.min(i + 3, labels.length); j++) {
+        sum += Number(s.values?.[j] || 0);
+      }
+      sums[si].push(sum);
+    });
   }
   return {
     labels: qLabels,
-    before: { ...before, values: bVals },
-    after: { ...after, values: aVals },
+    seriesList: seriesList.map((s, si) => ({ ...s, values: sums[si] })),
   };
 };
 
@@ -50,57 +50,142 @@ const DualLineChart = memo(
     labels = DEFAULTS.labels,
     before = DEFAULTS.before,
     after = DEFAULTS.after,
+    // Compare-mode entry point: an array of { key, label, color, values },
+    // one per metric — same "N distinct series, all visible/toggleable at
+    // once" contract VerticalBarView's compare mode and LineChartView's
+    // compareMode already have. When provided, this REPLACES before/after
+    // entirely (they're ignored). The last entry gets the gradient-area fill
+    // and a solid line (the "primary" series, matching `after`'s old role);
+    // every other entry renders as a dashed line only (matching `before`'s
+    // old role) unless it sets its own `dashed: false`.
+    multiSeries = null,
     cursorIndex = 3,
     formatValue,
     width = 520,
     size = "l",
     expandable = false,
     className = "",
-    // Renders only the `after` series — same component, chrome and interactions
-    // as the two-series version, so single-metric trends stay visually
-    // consistent with the YoY comparisons sitting next to them. The prior-year
-    // line, its legend entry, its toggle, its stats card and its table columns
-    // all drop out together; `before` is then ignored entirely.
+    // Renders only the primary series — same component, chrome and
+    // interactions as the multi-series version, so single-metric trends stay
+    // visually consistent with the comparisons sitting next to them. Ignored
+    // when multiSeries has more than one entry (compare mode is inherently
+    // multi-series).
     singleSeries = false,
+    // Both default to today's behaviour so existing usages are unaffected.
+    // `showHeader={false}` is for hosts that already render their own title
+    // (the ranked widget), where the card's title + headline duplicate it.
+    showHeader = true,
+    showBorder = true,
+    // Portal target for the legend (e.g. the ranked widget's own footer,
+    // centered) — when given, the legend renders there instead of floating
+    // in the card's own header cluster, freeing that space for the total.
+    legendPortal = null,
   }) => {
     const uid = useRef(`dl-${Math.random().toString(36).slice(2, 6)}`).current;
     const t = resolveTheme(theme, "light");
     const fmt = formatValue || fmtMoneyDefault;
     const [period, setPeriod] = useState("monthly");
-    const [series, setSeries] = useState({ before: true, after: true });
+
+    // Normalize every call site (legacy before/after, or new multiSeries)
+    // into one shape everything below operates on. This is the ONLY place
+    // that knows which prop shape the caller used.
+    const baseSeriesList = useMemo(() => {
+      if (multiSeries && multiSeries.length > 0) {
+        return multiSeries.map((s, i) => ({
+          key: s.key ?? s.label ?? `series-${i}`,
+          label: s.label,
+          color: s.color,
+          values: s.values,
+          dashed: s.dashed ?? i < multiSeries.length - 1,
+          area: i === multiSeries.length - 1,
+        }));
+      }
+      if (singleSeries) {
+        return [{ key: "after", label: after.label, color: after.color, values: after.values, dashed: false, area: true }];
+      }
+      return [
+        { key: "before", label: before.label, color: before.color, values: before.values, dashed: true, area: false },
+        { key: "after", label: after.label, color: after.color, values: after.values, dashed: false, area: true },
+      ];
+    }, [multiSeries, before, after, singleSeries]);
+
+    const isMulti = baseSeriesList.length > 2 || (multiSeries && multiSeries.length > 0);
+
+    const [hiddenKeys, setHiddenKeys] = useState(() => new Set());
+    const toggleSeries = (key) =>
+      setHiddenKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
 
     const bucketed = useMemo(() => {
-      if (period === "quarterly") return toQuarterly(labels, before, after);
-      return { labels, before, after };
-    }, [period, labels, before, after]);
+      if (period === "quarterly") {
+        const q = toQuarterly(labels, baseSeriesList);
+        return { labels: q.labels, seriesList: q.seriesList };
+      }
+      return { labels, seriesList: baseSeriesList };
+    }, [period, labels, baseSeriesList]);
 
-    const { labels: curLabels, before: curBefore, after: curAfter } = bucketed;
-    const beforeOn = singleSeries ? false : series.before;
-    const afterOn = series.after;
+    const { labels: curLabels, seriesList } = bucketed;
+    // At least one series must always stay visible — an all-hidden chart has
+    // nothing left to plot and no way back via the (now-empty) legend.
+    const visibleSeriesList = seriesList.filter((s) => !hiddenKeys.has(s.key));
+    const isKeyOn = (key) => (visibleSeriesList.length > 0 ? !hiddenKeys.has(key) : true);
+
+    // Primary series (the one with the area fill) drives the headline total,
+    // the "last real point" marker, and — in the 2-series legacy shape —
+    // used to be called `curAfter`.
+    const primary = seriesList[seriesList.length - 1];
+    const secondaries = seriesList.slice(0, -1);
 
     // Null-out 0-valued months so Recharts breaks the line instead of spiking to 0
     const chartData = useMemo(() => curLabels.map((label, i) => {
-      const bv = curBefore.values?.[i];
-      const av = curAfter.values?.[i];
-      return {
-        label,
-        [curBefore.label]: (bv != null && bv !== 0) ? bv : null,
-        [curAfter.label]: (av != null && av !== 0) ? av : null,
-      };
-    }), [curLabels, curBefore, curAfter]);
+      const row = { label };
+      seriesList.forEach((s) => {
+        const v = s.values?.[i];
+        row[s.label] = (v != null && v !== 0) ? v : null;
+      });
+      return row;
+    }), [curLabels, seriesList]);
 
-    // Index of the most recent month that actually has data. chartData nulls
-    // out missing/zero months, so this is the last non-null — i.e. the point a
-    // reader cares about most ("where are we now"), which gets a marker while
-    // every other point stays dotless to keep the line clean.
+    /**
+     * Y domain. Anchoring at 0 is right when the values run down to it, but for
+     * a band that sits high and narrow — load factor bouncing 49–89% — it
+     * spends half the plot on empty space and flattens the shape into a
+     * straight-ish line. When the data occupies less than ~55% of a
+     * zero-anchored axis, the axis zooms to a padded window around the data
+     * instead. Percentages additionally clamp to 0–100.
+     */
+    const yDomain = useMemo(() => {
+      const vals = chartData
+        .flatMap((d) => seriesList.map((s) => d[s.label]))
+        .filter((v) => typeof v === "number" && Number.isFinite(v));
+      if (!vals.length) return [0, "auto"];
+
+      const lo = Math.min(...vals);
+      const hi = Math.max(...vals);
+      if (hi <= 0 || lo < 0) return ["auto", "auto"];
+
+      const spread = hi - lo;
+      // Data already reaches most of the way to zero — keep the zero baseline.
+      if (spread === 0 || lo / hi < 0.45) return [0, "auto"];
+
+      const pad = Math.max(spread * 0.25, hi * 0.02);
+      return [Math.max(0, lo - pad), hi + pad];
+    }, [chartData, seriesList]);
+
+    // Index of the most recent month that actually has data for the primary
+    // series. chartData nulls out missing/zero months, so this is the last
+    // non-null — i.e. the point a reader cares about most ("where are we
+    // now"), which gets a marker while every other point stays dotless.
     const lastIdx = useMemo(() => {
       for (let i = chartData.length - 1; i >= 0; i--) {
-        if (chartData[i][curAfter.label] != null) return i;
+        if (chartData[i][primary.label] != null) return i;
       }
       return -1;
-    }, [chartData, curAfter.label]);
-
-    const toggleSeries = (key) => setSeries((s) => ({ ...s, [key]: !s[key] }));
+    }, [chartData, primary.label]);
 
     // single compact "more" pill instead of separate Monthly + Filter pills — expands
     // into one popover with period switch + series toggles, keeps the header small
@@ -111,16 +196,45 @@ const DualLineChart = memo(
         menu: [
           { label: "Monthly", value: "monthly", active: period === "monthly", onClick: () => setPeriod("monthly") },
           { label: "Quarterly", value: "quarterly", active: period === "quarterly", onClick: () => setPeriod("quarterly") },
-          ...(singleSeries ? [] : [{ label: curBefore.label, color: curBefore.color, active: beforeOn, onClick: () => toggleSeries("before") }]),
-          { label: curAfter.label, color: curAfter.color, active: afterOn, onClick: () => toggleSeries("after") },
+          ...seriesList.map((s) => ({
+            label: s.label, color: s.color, active: isKeyOn(s.key), onClick: () => toggleSeries(s.key),
+          })),
         ],
       },
     ];
 
-    const legendItems = [
-      ...(singleSeries ? [] : [{ key: "before", label: curBefore.label, color: curBefore.color, active: beforeOn }]),
-      { key: "after", label: curAfter.label, color: curAfter.color, active: afterOn },
-    ];
+    const legendItems = seriesList.map((s) => ({ key: s.key, label: s.label, color: s.color, active: isKeyOn(s.key) }));
+
+    // Rendered into ChartCard's own floating header cluster (via headline.legend
+    // below) instead of floating inside the chart body — a legend box sitting over
+    // the plot was eating vertical space the chart itself needed.
+    const legendNode = (
+      <div style={{ display: "flex", flexWrap: isMulti ? "wrap" : "nowrap", alignItems: "center", gap: 10 }}>
+        {legendItems.map((it) => (
+          <span
+            key={it.key}
+            onClick={() => toggleSeries(it.key)}
+            style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", opacity: it.active === false ? 0.4 : 1 }}
+          >
+            <span
+              style={{
+                width: 8, height: 8, borderRadius: 0,
+                background: it.active === false ? "transparent" : it.color,
+                border: `1px solid ${it.color}`,
+              }}
+            />
+            <span
+              style={{
+                fontSize: 11, fontWeight: 700, color: t.text.secondary,
+                textDecoration: it.active === false ? "line-through" : "none",
+              }}
+            >
+              {it.label}
+            </span>
+          </span>
+        ))}
+      </div>
+    );
 
     // summary stats for the expanded/detailed view — total, average, highest, lowest per series
     const calcStats = (values) => {
@@ -131,10 +245,7 @@ const DualLineChart = memo(
     };
 
     const renderStats = () => {
-      const groups = [
-        ...(singleSeries ? [] : [{ label: curBefore.label, color: curBefore.color, stats: calcStats(curBefore.values) }]),
-        { label: curAfter.label, color: curAfter.color, stats: calcStats(curAfter.values) },
-      ];
+      const groups = seriesList.map((s) => ({ label: s.label, color: s.color, stats: calcStats(s.values) }));
       return (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginTop: 20 }}>
           {groups.map((g) => (
@@ -173,6 +284,11 @@ const DualLineChart = memo(
       );
     };
 
+    // Delta column only makes sense for exactly two series (a before/after
+    // comparison) — with 3+ metrics "a - b" is arbitrary about which two, so
+    // it drops rather than picking an arbitrary pair.
+    const showDelta = seriesList.length === 2;
+
     const renderTable = () => (
       <div
         style={{
@@ -185,30 +301,22 @@ const DualLineChart = memo(
             <thead>
               <tr style={{ textAlign: "left", color: t.text.secondary, background: t.mode === "light" ? "#f1f5f9" : "rgba(255,255,255,0.05)" }}>
                 <th style={{ padding: "10px 14px", fontWeight: 700 }}>{period === "quarterly" ? "Quarter" : "Month"}</th>
-                {!singleSeries && (
-                  <th style={{ padding: "10px 14px", fontWeight: 700, textAlign: "right" }}>
+                {seriesList.map((s) => (
+                  <th key={s.key} style={{ padding: "10px 14px", fontWeight: 700, textAlign: "right" }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                      <span style={{ width: 9, height: 9, borderRadius: 0, background: curBefore.color }} />{curBefore.label}
+                      <span style={{ width: 9, height: 9, borderRadius: 0, background: s.color }} />{s.label}
                     </span>
                   </th>
-                )}
-                <th style={{ padding: "10px 14px", fontWeight: 700, textAlign: "right" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                    <span style={{ width: 9, height: 9, borderRadius: 0, background: curAfter.color }} />{curAfter.label}
-                  </span>
-                </th>
-                {!singleSeries && <th style={{ padding: "10px 14px", fontWeight: 700, textAlign: "right" }}>Δ</th>}
+                ))}
+                {showDelta && <th style={{ padding: "10px 14px", fontWeight: 700, textAlign: "right" }}>Δ</th>}
               </tr>
             </thead>
             <tbody>
               {curLabels.map((lb, i) => {
-                const rawB = curBefore.values?.[i];
-                const rawA = curAfter.values?.[i];
-                const bReported = rawB !== null && rawB !== undefined && Number(rawB) !== 0;
-                const aReported = rawA !== null && rawA !== undefined && Number(rawA) !== 0;
-                const b = Number(rawB || 0);
-                const a = Number(rawA || 0);
-                const delta = a - b;
+                const rawValues = seriesList.map((s) => s.values?.[i]);
+                const reported = rawValues.map((rv) => rv !== null && rv !== undefined && Number(rv) !== 0);
+                const nums = rawValues.map((rv) => Number(rv || 0));
+                const delta = showDelta ? nums[1] - nums[0] : 0;
                 const deltaColor = delta >= 0 ? "#10B981" : "#f43f5e";
                 return (
                   <tr
@@ -220,11 +328,14 @@ const DualLineChart = memo(
                     }}
                   >
                     <td style={{ padding: "9px 14px", color: t.text.secondary, fontWeight: 600 }}>{lb}</td>
-                    {!singleSeries && <td style={{ padding: "9px 14px", textAlign: "right", fontWeight: 600 }}>{bReported ? fmt(b) : "—"}</td>}
-                    <td style={{ padding: "9px 14px", textAlign: "right", fontWeight: 600 }}>{aReported ? fmt(a) : "—"}</td>
-                    {!singleSeries && (
+                    {seriesList.map((s, si) => (
+                      <td key={s.key} style={{ padding: "9px 14px", textAlign: "right", fontWeight: 600 }}>
+                        {reported[si] ? fmt(nums[si]) : "—"}
+                      </td>
+                    ))}
+                    {showDelta && (
                       <td style={{ padding: "9px 14px", textAlign: "right" }}>
-                        {bReported && aReported ? (
+                        {reported[0] && reported[1] ? (
                           <span style={{ padding: "2px 9px", borderRadius: 0, fontWeight: 700, fontSize: 12, background: `${deltaColor}1a`, color: deltaColor }}>
                             {delta >= 0 ? "+" : ""}{fmt(delta)}
                           </span>
@@ -247,61 +358,42 @@ const DualLineChart = memo(
       const chartH = detailed ? 260 : (fillMode ? undefined : (SIZES[size] ?? SIZES.m));
       return (
         <div style={{ position: "relative", ...(fillMode ? { display: "flex", flexDirection: "column", height: "100%" } : {}) }}>
-          {/* compact legend badge in the top-right corner — frees the space a bottom legend row used to take.
-              Inset (not flush 0,0) so it never reads as clipped by the card's rounded corner. */}
-          <div
-            style={{
-              position: "absolute", top: 6, right: 6, zIndex: 5,
-              maxWidth: "calc(100% - 12px)", overflow: "hidden",
-              display: "flex", alignItems: "center", gap: 10,
-              padding: "3px 9px", borderRadius: 999,
-              background: "rgba(255,255,255,0.85)", backdropFilter: "blur(6px)",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-            }}
-          >
-            {legendItems.map((it) => (
-              <span
-                key={it.key}
-                onClick={() => toggleSeries(it.key)}
-                style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", opacity: it.active === false ? 0.4 : 1 }}
-              >
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: it.color }} />
-                <span style={{ fontSize: 11, fontWeight: 600, color: t.text.secondary }}>{it.label}</span>
-              </span>
-            ))}
-          </div>
           <div style={{ ...(fillMode ? { flex: 1, minHeight: 0 } : { height: chartH }), width: "100%", marginLeft: -6, marginRight: -1, marginBottom: -10 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 20, right: 4, bottom: 0, left: 0 }}>
+              <ComposedChart data={chartData} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id={uid} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={curAfter.color} stopOpacity="0.18" />
-                    <stop offset="100%" stopColor={curAfter.color} stopOpacity="0.02" />
+                    <stop offset="0%" stopColor={primary.color} stopOpacity="0.18" />
+                    <stop offset="100%" stopColor={primary.color} stopOpacity="0.02" />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="4 5" stroke={t.grid} vertical={false} />
+                {/* Tick fill comes from the resolved theme, not the shared
+                    AXIS_*_TICK constants' own `fill` — those read a global
+                    light/dark CSS var, which stays dark-text-on-light
+                    regardless of what THIS card's background is, going
+                    illegible on a solid gradient card. */}
+                <CartesianGrid {...AXIS_GRID_PROPS} stroke={t.grid} vertical={false} />
                 <XAxis
                   dataKey="label"
-                  tick={{ fontSize: 12, fill: t.text.muted, fontWeight: 500 }}
-                  tickLine={false}
-                  axisLine={false}
+                  tick={{ ...AXIS_CATEGORY_TICK, fill: t.text.secondary }}
+                  {...AXIS_LINE_PROPS}
                 />
                 <YAxis
                   tickFormatter={fmt}
-                  tick={{ fontSize: 11, fill: t.text.muted }}
-                  tickLine={false}
-                  axisLine={false}
+                  tick={{ ...AXIS_VALUE_TICK, fill: t.text.muted }}
+                  {...AXIS_LINE_PROPS}
                   width={44}
+                  domain={yDomain}
                 />
                 <Tooltip
                   content={({ active, payload, label }) => {
                     if (!active || !payload?.length) return null;
-                    // The current-year series is drawn as an invisible-stroke
-                    // Area (for the gradient fill) PLUS a separate visible
-                    // Line on top (for the crisp stroke) — both share the
-                    // same dataKey, so Recharts' default tooltip lists that
-                    // series twice. Dedupe by dataKey, preferring whichever
-                    // entry actually has a real stroke color.
+                    // The primary series is drawn as an invisible-stroke Area
+                    // (for the gradient fill) PLUS a separate visible Line on
+                    // top (for the crisp stroke) — both share the same
+                    // dataKey, so Recharts' default tooltip lists that series
+                    // twice. Dedupe by dataKey, preferring whichever entry
+                    // actually has a real stroke color.
                     const byKey = new Map();
                     payload.forEach((p) => {
                       const existing = byKey.get(p.dataKey);
@@ -323,43 +415,44 @@ const DualLineChart = memo(
                     );
                   }}
                 />
-                {afterOn && (
+                {isKeyOn(primary.key) && (
                   <Area
                     type="monotone"
-                    dataKey={curAfter.label}
+                    dataKey={primary.label}
                     fill={`url(#${uid})`}
                     stroke="none"
                     connectNulls={false}
                     isAnimationActive={false}
                   />
                 )}
-                {beforeOn && (
+                {secondaries.map((s) => isKeyOn(s.key) && (
                   <Line
+                    key={s.key}
                     type="monotone"
-                    dataKey={curBefore.label}
-                    stroke={curBefore.color}
+                    dataKey={s.label}
+                    stroke={s.color}
                     strokeWidth={2.5}
                     dot={false}
                     connectNulls={false}
-                    strokeDasharray="5 4"
+                    strokeDasharray={s.dashed ? "5 4" : undefined}
                     isAnimationActive={false}
                   />
-                )}
-                {afterOn && (
+                ))}
+                {isKeyOn(primary.key) && (
                   <Line
                     type="monotone"
-                    dataKey={curAfter.label}
-                    stroke={curAfter.color}
+                    dataKey={primary.label}
+                    stroke={primary.color}
                     strokeWidth={3}
                     dot={(d) =>
                       d.index === lastIdx && d.cx != null && d.cy != null ? (
                         <g key={`cur-${d.index}`} pointerEvents="none">
-                          <circle cx={d.cx} cy={d.cy} r={8} fill={curAfter.color} fillOpacity={0.18} />
-                          <circle cx={d.cx} cy={d.cy} r={4.5} fill={curAfter.color} stroke="#fff" strokeWidth={2} />
+                          <circle cx={d.cx} cy={d.cy} r={8} fill={primary.color} fillOpacity={0.18} />
+                          <circle cx={d.cx} cy={d.cy} r={4.5} fill={primary.color} stroke="#fff" strokeWidth={2} />
                         </g>
                       ) : null
                     }
-                    activeDot={{ r: 5, fill: curAfter.color, stroke: "#fff", strokeWidth: 2 }}
+                    activeDot={{ r: 5, fill: primary.color, stroke: "#fff", strokeWidth: 2 }}
                     connectNulls={false}
                     isAnimationActive={false}
                   />
@@ -374,23 +467,30 @@ const DualLineChart = memo(
     };
 
     return (
+      <>
       <ChartCard
         theme={t}
-        title={title}
-        icon={icon}
+        title={showHeader ? title : null}
+        icon={showHeader ? icon : null}
         iconColor={iconColor}
-        subtitle={subtitle}
+        subtitle={showHeader ? subtitle : null}
         controls={periodControl}
         onControl={onControl}
         width={width}
         size={size}
-        className={className}
-        headline={{ value: fmt(total), change: changePct }}
+        className={`${showBorder ? "" : "!border-0 !shadow-none"} ${className}`}
+        // Headline is deliberately NOT gated by showHeader: hosts hide the
+        // duplicated title but still want the big total top-right. Legend
+        // drops out of the headline entirely when portaled elsewhere — it's
+        // rendered via the portal below instead, not in both places.
+        headline={{ value: fmt(total), change: changePct, legend: legendPortal ? null : legendNode }}
         expandable={expandable}
         floatingHeader
       >
         {({ detailed }) => renderChart(detailed)}
       </ChartCard>
+      {legendPortal && createPortal(legendNode, legendPortal)}
+      </>
     );
   }
 );

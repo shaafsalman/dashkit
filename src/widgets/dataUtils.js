@@ -5,9 +5,9 @@ export const formatValue = (value,showPercentage=false) => {
   if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
   if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
   if(showPercentage){
-    return `${value}%`;
+    return `${Number(value).toFixed(1)}%`;
   }
-  return value;
+  return Number.isInteger(value) ? value : Number(value).toFixed(2);
 };
 
 // Format label for axis
@@ -15,9 +15,9 @@ export const formatLabel = (value,showPercentage) => {
   if (value >= 1000000) return `${(value/1000000).toFixed(1)}M`;
   if (value >= 1000) return `${(value/1000).toFixed(1)}K`;
     if(showPercentage){
-    return `${value}%`;
+    return `${Number(value).toFixed(1)}%`;
   }
-  return value;
+  return Number.isInteger(value) ? value : Number(value).toFixed(2);
 };
 
 // Calculate statistics from a dataset

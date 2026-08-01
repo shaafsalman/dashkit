@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronDown,
   ChevronUp,
@@ -7,13 +8,20 @@ import {
   Hash,
 } from "lucide-react";
 import { chartPalettes } from "./colorConfig";
+import useContainerDensity from "./useContainerDensity.js";
+import { FunnelChart, DualLineChart, lighten } from "../lib/charts";
+import { formatLabel } from "./dataUtils.js";
 import HorizontalBarView from "./HorizontalBarView.jsx";
 import VerticalBarView from "./VerticalBarView.jsx";
 import PieChartView from "./PieChartView";
 import AreaChartView from "./AreaChartView";
 import LineChartView from "./LineChartView";
+import ComparisonChart from "../ComparisonChart";
 import WidgetHeader from "./WidgetHeader.jsx";
 import WidgetFooter from "./WidgetFooter.jsx";
+
+// Funnel bands ramp from this hue down to a light tint of it.
+const FUNNEL_BASE_COLOR = "#EA580C";
 
 const parseMonthString = (str) => {
   if (!str) return null;
@@ -58,40 +66,85 @@ const detectMultipleYearsFromItems = (items) => {
   return Array.from(years).sort();
 };
 
-const useIsMobile = () => {
-  const [isMobile, setIsMobile] = useState(false);
+// `isMobile` drives the COMPACT STYLING (font sizes, item limits, stacked
+// controls) and intentionally still trips on short viewports — a 780px-tall
+// window needs the tighter chrome just as much as a phone does.
+//
+// `isNarrow` is width-only and is the sole gate for the h-[75vh] height
+// override. Those two questions used to share one flag, so any laptop under
+// 800px tall silently ignored the `height` prop and forced every widget to
+// 75vh — which made multi-widget grid layouts impossible to build.
+const useViewport = () => {
+  const [vp, setVp] = useState({ isMobile: false, isNarrow: false });
   useEffect(() => {
-    const checkIsMobile = () => {
-      setIsMobile(window.innerHeight <= 800 || window.innerWidth <= 768);
+    const check = () => {
+      setVp({
+        isMobile: window.innerHeight <= 800 || window.innerWidth <= 768,
+        isNarrow: window.innerWidth <= 768,
+      });
     };
-    checkIsMobile();
-    window.addEventListener("resize", checkIsMobile);
-    window.addEventListener("orientationchange", checkIsMobile);
+    check();
+    window.addEventListener("resize", check);
+    window.addEventListener("orientationchange", check);
     return () => {
-      window.removeEventListener("resize", checkIsMobile);
-      window.removeEventListener("orientationchange", checkIsMobile);
+      window.removeEventListener("resize", check);
+      window.removeEventListener("orientationchange", check);
     };
   }, []);
-  return isMobile;
+  return vp;
 };
 
-const LoadingState = ({ viewMode = "horizontal", isMobile = false }) => (
-  <div className="absolute inset-0 flex items-center justify-center">
-    <div className="relative">
-      <div className="absolute inset-0 w-20 h-20 sm:w-24 sm:h-24 md:w-32 md:h-32 lg:w-36 lg:h-36 xl:w-40 xl:h-40 bg-accent/10 rounded-full blur-2xl animate-pulse" />
-      <div className="relative w-20 h-20 sm:w-24 sm:h-24 md:w-32 md:h-32 lg:w-36 lg:h-36 xl:w-40 xl:h-40 border-4 sm:border-5 md:border-6 lg:border-7 xl:border-8 border-gray-200/60 rounded-full animate-pulse" />
-      <div
-        className="absolute inset-0 w-20 h-20 sm:w-24 sm:h-24 md:w-32 md:h-32 lg:w-36 lg:h-36 xl:w-40 xl:h-40 border-4 sm:border-5 md:border-6 lg:border-7 xl:border-8 border-transparent border-t-accent rounded-full animate-spin"
-        style={{ animationDuration: "1.8s" }}
-      />
+/**
+ * Loading placeholder.
+ *
+ * Was a large spinning ring with a blurred glow and a pinging dot, sized in
+ * five viewport steps — it ignored the tile it sat in (overflowing short bento
+ * tiles) and drew far more attention than the content it stood in for. Now it
+ * previews the SHAPE of whatever view is loading, in flat grays, sized in % so
+ * it fits any tile.
+ */
+const LoadingState = ({ viewMode = "horizontal" }) => {
+  const bars = [62, 88, 74, 95, 58, 80, 68, 90];
 
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 lg:w-3.5 lg:h-3.5 bg-accent rounded-full animate-ping" />
-        <div className="absolute w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 lg:w-3.5 lg:h-3.5 bg-accent rounded-full" />
+  if (viewMode === "horizontal") {
+    return (
+      <div className="absolute inset-0 flex flex-col justify-around gap-1.5 p-1 animate-pulse">
+        {bars.slice(0, 6).map((w, i) => (
+          <div key={i} className="flex-1 min-h-0 border-l-4 border-gray-200 bg-gray-100 px-2 py-1.5">
+            <div className="h-2 w-1/3 bg-gray-200" />
+            <div className="mt-1.5 h-1.5 bg-gray-200" style={{ width: `${w}%` }} />
+          </div>
+        ))}
       </div>
+    );
+  }
+
+  if (viewMode === "pie") {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center p-3 animate-pulse">
+        <div className="aspect-square h-full max-h-full max-w-full rounded-full border-[12px] border-gray-200" />
+      </div>
+    );
+  }
+
+  // vertical / area / line — a bar silhouette reads for all three.
+  //
+  // 8 flex-1 bars across a full-width widget produced ~200px-wide slabs that
+  // dominated the page. Real data is 12 monthly bars, so match that count, cap
+  // each bar's width, and keep the block to the lower portion of the tile —
+  // a placeholder should suggest the shape, not out-shout the loaded chart.
+  return (
+    <div className="absolute inset-0 flex items-end justify-center gap-2 px-3 pb-3 pt-10 animate-pulse">
+      {Array.from({ length: 12 }, (_, i) => bars[i % bars.length]).map((h, i) => (
+        <div
+          key={i}
+          className="w-full max-w-[34px] flex-1 bg-gray-100"
+          style={{ height: `${h * 0.8}%` }}
+        />
+      ))}
     </div>
-  </div>
-);
+  );
+};
 
 const RankedDataWidget = ({
   items = [],
@@ -108,7 +161,9 @@ const RankedDataWidget = ({
   enableSorting = true,
   defaultMetricKey = "default",
   defaultViewMode = "horizontal",
-  availableViewModes = ["horizontal", "vertical", "pie", "area", "line"],
+  // `funnel` is opt-in: it only suits ranked categorical data, so a caller has
+  // to ask for it explicitly rather than every widget offering it.
+  availableViewModes = ["horizontal", "vertical", "pie", "area", "line", "dualline"],
   colorPalette = [
     "#10B981",
     "#3B82F6",
@@ -123,6 +178,11 @@ const RankedDataWidget = ({
   barColor = "#10B981",
   pie_legend = true,
   numbered_ranking = false,
+  // (name, item) => LucideIcon — override the list view's default keyword
+  // matching with a caller-supplied mapping.
+  itemIcon,
+  // Opt out of list row icons (see HorizontalBarView).
+  showItemIcons = true,
   filterZeroValues = false,
   verticalInverse = false,
   decimal = true,
@@ -143,9 +203,19 @@ const RankedDataWidget = ({
   isLoading = false,
   height = "h-[60vh]",
   defaultCompare = false,
-  defaultMetricsCollapsed = false,
+  defaultMetricsCollapsed = true,
 }) => {
-  const isMobile = useIsMobile();
+  const { isMobile, isNarrow } = useViewport();
+  const [sizeRef, density] = useContainerDensity();
+  const [expanded, setExpanded] = useState(false);
+
+  // Esc closes the expanded modal.
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e) => e.key === "Escape" && setExpanded(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
 
   const MULTI_COLORS = useMemo(() => {
     try {
@@ -157,13 +227,28 @@ const RankedDataWidget = ({
     }
   }, [colorPalette]);
 
-  const filteredViewModes = useMemo(
-    () =>
-      availableViewModes.filter((mode) =>
-        ["horizontal", "vertical", "pie", "area", "line"].includes(mode)
-      ),
-    [availableViewModes]
-  );
+  // area / funnel each render exactly ONE series, so on a multi-metric widget
+  // they silently drop everything but the selected metric — the chart looks
+  // fine and quietly lies. Only the views that can actually show several
+  // series at once, or make the single-series choice explicit, stay
+  // available there.
+  // `dualline` and `pie` are both included: dualline renders the SELECTED
+  // metric as a year pair, and pie's `getItemValue` (below) is
+  // `selectedMetricObj.getItemValue` — both read the header metric selector's
+  // choice, so which single series is showing is explicit, not silent.
+  // area/funnel stay out because they have no such affordance.
+  const MULTI_SERIES_SAFE = ["horizontal", "vertical", "line", "dualline", "pie"];
+
+  const filteredViewModes = useMemo(() => {
+    const known = availableViewModes.filter((mode) =>
+      ["horizontal", "vertical", "pie", "funnel", "area", "line", "dualline"].includes(
+        mode
+      )
+    );
+    return metrics.length > 1
+      ? known.filter((mode) => MULTI_SERIES_SAFE.includes(mode))
+      : known;
+  }, [availableViewModes, metrics.length]);
 
   const safeDefaultViewMode = useMemo(
     () =>
@@ -191,6 +276,10 @@ const RankedDataWidget = ({
   // "2025 / 2026" filter) portals into, so it renders in the header instead
   // of floating inside the chart body and eating into the plot.
   const [chartYearTogglePortal, setChartYearTogglePortal] = useState(null);
+  // Same idea, for a chart view's own legend (year colors, or metric colors
+  // in compare mode) — portals into the FOOTER (centered) instead of
+  // floating over the plot.
+  const [chartLegendPortal, setChartLegendPortal] = useState(null);
   const [compareMode, setCompareMode] = useState(
     defaultComparable ||
       defaultCompare ||
@@ -241,6 +330,20 @@ const RankedDataWidget = ({
     return detectMultipleYearsFromItems(activeItems);
   }, [activeItems]);
 
+  // `detectMultipleYearsFromItems` only matches the strict "Jan-25" shape, so
+  // data labelled "Jan 2025" reported no years — which is why the Compare
+  // button never appeared on Revenue / Operating Cost even though the chart
+  // itself was clearly plotting two years. This mirrors the looser trailing-year
+  // match the chart views use.
+  const hasYearSuffixData = useMemo(() => {
+    const years = new Set();
+    activeItems.forEach((item) => {
+      const m = String(item?.name ?? "").match(/(\d{2,4})$/);
+      if (m) years.add(m[1].length === 2 ? `20${m[1]}` : m[1]);
+    });
+    return years.size > 1;
+  }, [activeItems]);
+
   const hasMultiYearData = detectedYearsInData.length > 1;
 
   const { sortedItems, maxValue, totalSum } = useMemo(() => {
@@ -286,6 +389,26 @@ const RankedDataWidget = ({
     selectedMetricObj,
     filterZeroValues,
   ]);
+
+  // Single source of truth for the Y-axis ceiling shared by all three view
+  // modes, so switching bar/area/line no longer re-derives its own domain and
+  // visibly jumps. `maxValue` above already covers the default case AND
+  // VerticalBarView's isYearMode: those scan the exact same per-item values,
+  // just regrouped by year inside the child — same numbers, no separate
+  // computation needed. Only compareMode with >1 metric needs a different
+  // ceiling: the tallest per-item STACK (sum across all metrics), matching
+  // the `totalValue` field the chartData memo below already builds for that
+  // same condition.
+  const sharedMaxValue = useMemo(() => {
+    if (compareMode && metrics.length > 1) {
+      const stackTotals = activeDataForCalculations.map((item) =>
+        metrics.reduce((sum, m) => sum + (Number(getItemValue(item)) || 0), 0)
+      );
+      const naturalStackMax = stackTotals.length ? Math.max(...stackTotals) : 0;
+      return Math.ceil(naturalStackMax * 1.05);
+    }
+    return maxValue;
+  }, [activeDataForCalculations, getItemValue, metrics, compareMode, maxValue]);
 
   const itemsToShow = useMemo(() => {
     if (expandedView) {
@@ -346,27 +469,34 @@ const RankedDataWidget = ({
   }, [itemsToShow, getItemValue, maxValue, totalSum, compareMode, metrics]);
 
   const statsData = useMemo(() => {
+    // getItemValue may hand back a STRING for decimal metrics (RASK/CASK come
+    // through as "0.10"). `total + value` then concatenates instead of adding,
+    // which is how Sum rendered as "00.100.100.100.10" and Average as 0 —
+    // Math.max on strings misbehaves the same way. Coerce once, here.
+    const toNumbers = (fn) =>
+      activeDataForCalculations
+        .map((item) => Number(fn(item)))
+        .map((n) => (Number.isFinite(n) ? n : 0));
+
+    const summarize = (values) => {
+      const sum = values.reduce((total, value) => total + value, 0);
+      return {
+        sum,
+        mean: values.length > 0 ? sum / values.length : 0,
+        max: values.length > 0 ? Math.max(...values) : 0,
+      };
+    };
+
     if (compareMode && metrics.length > 1) {
       const allMetricsStats = {};
       metrics.forEach((metric) => {
-        const itemValues = activeDataForCalculations.map(
-          (item) => metric.getItemValue(item) || 0
+        allMetricsStats[metric.key] = summarize(
+          toNumbers((item) => metric.getItemValue(item))
         );
-        const sum = itemValues.reduce((total, value) => total + value, 0);
-        const mean = itemValues.length > 0 ? sum / itemValues.length : 0;
-        const max = itemValues.length > 0 ? Math.max(...itemValues) : 0;
-        allMetricsStats[metric.key] = { sum, mean, max };
       });
       return allMetricsStats;
-    } else {
-      const itemValues = activeDataForCalculations.map(
-        (item) => getItemValue(item) || 0
-      );
-      const sum = itemValues.reduce((total, value) => total + value, 0);
-      const mean = itemValues.length > 0 ? sum / itemValues.length : 0;
-      const max = itemValues.length > 0 ? Math.max(...itemValues) : 0;
-      return { sum, mean, max };
     }
+    return summarize(toNumbers(getItemValue));
   }, [activeDataForCalculations, getItemValue, compareMode, metrics]);
 
   const defaultStats = useMemo(() => {
@@ -414,8 +544,12 @@ const RankedDataWidget = ({
     }
 
     if (viewMode === "horizontal") {
+      // In a tall bento tile a short list would otherwise sit in the top third
+      // with dead space beneath it. `min-h-full` + stretching the rows lets the
+      // list distribute itself down the tile; once the rows exceed the box the
+      // basis floors out and it goes back to scrolling normally.
       return (
-        <div className="custom-scrollbar-minimal">
+        <div className="custom-scrollbar-minimal flex min-h-full flex-col [&>*]:flex-1 [&>*]:min-h-[46px] [&>*]:flex [&>*]:flex-col [&>*]:justify-center">
           {itemsToShow.map((item, index) => {
             const itemWithPercentage = {
               ...item,
@@ -426,6 +560,8 @@ const RankedDataWidget = ({
             ) : (
               <HorizontalBarView
                 key={`${selectedYear}-${index}`}
+                itemIcon={itemIcon}
+                showItemIcons={showItemIcons}
                 item={itemWithPercentage}
                 index={index}
                 getItemValue={getItemValue}
@@ -445,7 +581,7 @@ const RankedDataWidget = ({
           key={`vertical-${selectedYear}`}
           chartData={chartData}
           barColor={barColor}
-          maxValue={maxValue}
+          maxValue={sharedMaxValue}
           isInverse={verticalInverse}
           stacked={compareMode}
           metrics={metrics}
@@ -459,6 +595,43 @@ const RankedDataWidget = ({
           showPercentage={showPercentage}
           showDollar={showDollar}
           yearTogglePortal={chartYearTogglePortal}
+          legendPortal={chartLegendPortal}
+        />
+      );
+    } else if (viewMode === "funnel") {
+      // Reuses the standalone lib/charts FunnelChart so the funnel looks and
+      // behaves identically wherever it appears. Ranked items map straight onto
+      // its stage list — already sorted by the widget's own sort logic.
+      return (
+        <FunnelChart
+          key={`funnel-${selectedYear}-${selectedMetric}`}
+          theme={{ base: "light", radius: 0, backdrop: "none", surface: "#ffffff", pad: "4px" }}
+          size="fill"
+          width="100%"
+          compact
+          controls={[]}
+          // Widget supplies its own header, so the funnel's built-in
+          // "Conversion" heading is redundant — but the centred per-band value
+          // is the funnel's main readout and stays.
+          showHeader={false}
+          // Single-hue orange ramp: the funnel is one measure split by
+          // category, so a rainbow of unrelated default colors implied
+          // categories that differ in kind. Shading from full strength down to
+          // light keeps the rank order legible at a glance. (Each band still
+          // gets its own left→right gradient internally.)
+          stages={itemsToShow.map((item, i) => ({
+            label: item.name || `Item ${i + 1}`,
+            value: getItemValue(item) || item.value || 0,
+            // Caps at 0.3 — past that the tail bands wash out and the white
+            // value text inside them stops being readable.
+            color: lighten(
+              FUNNEL_BASE_COLOR,
+              Math.min(0.3, (i / Math.max(itemsToShow.length - 1, 1)) * 0.3),
+            ),
+          }))}
+          formatValue={(v) =>
+            `${showDollar ? "$" : ""}${formatLabel(v, showPercentage)}`
+          }
         />
       );
     } else if (viewMode === "pie") {
@@ -478,47 +651,284 @@ const RankedDataWidget = ({
         />
       );
     } else if (viewMode === "area") {
+      // Multi-metric compare doesn't fit ComparisonChart's "N years" model
+      // (each metric would need its own value axis) — keep the existing
+      // AreaChartView rendering for that case only, same split "line" uses.
+      if (compareMode && metrics.length > 1) {
+        return (
+          <AreaChartView
+            key={`area-${selectedYear}-${selectedMetric}`}
+            chartData={chartData}
+            // Compare-mode points have no `.value`; the number lives under
+            // the selected metric's key.
+            valueKey={selectedMetric}
+            barColor={barColor}
+            maxValue={sharedMaxValue}
+            relative_percentage={relative_percentage}
+            external_sums={external_sums}
+            decimal={decimal}
+            isMobile={isMobile}
+            showPercentage={showPercentage}
+            compareMode={compareMode}
+            showDollar={showDollar}
+            yearTogglePortal={chartYearTogglePortal}
+          />
+        );
+      }
+
+      // Single metric, compared across years — same ComparisonChart adapter
+      // as the "line" branch below, just opening on its Area tab instead of
+      // Line. Same component either way (Bar/Area/Line all live inside
+      // ComparisonChart's own switcher), so this is genuinely "the same
+      // chart", not a lookalike.
+      // ComparisonChart's own month sort keys off FULL month names ("January"
+      // — its `MONTHS` map's own keys), not abbreviations; it abbreviates
+      // for display itself. Passing "Jan" as `name` made every row miss that
+      // lookup and silently fall back to sorting by value instead of
+      // chronologically — the reshuffled x-axis (May landing at the end).
+      const FULL_MONTHS_AREA = { Jan: "January", Feb: "February", Mar: "March", Apr: "April", May: "May", Jun: "June", Jul: "July", Aug: "August", Sep: "September", Oct: "October", Nov: "November", Dec: "December" };
+      const extractMonthYearArea = (name) => {
+        const m = String(name ?? "").match(/^([A-Za-z]+)[-\s_]*(\d{2,4})$/);
+        if (!m) return null;
+        const abbr = m[1].slice(0, 3);
+        const abbr3 = abbr.charAt(0).toUpperCase() + abbr.slice(1).toLowerCase();
+        return {
+          mon: FULL_MONTHS_AREA[abbr3] || m[1],
+          yr: m[2].length === 2 ? `20${m[2]}` : m[2],
+        };
+      };
+      const byYearArea = {};
+      chartData.forEach((d) => {
+        const my = extractMonthYearArea(d.name);
+        if (!my) return;
+        const v = d.value !== undefined ? d.value : d[selectedMetric];
+        (byYearArea[my.yr] ||= []).push({ name: my.mon, value: Number(v) || 0 });
+      });
+      const areaYears = Object.keys(byYearArea)
+        .map(Number)
+        .filter((n) => !isNaN(n));
+
       return (
-        <AreaChartView
-          key={`area-${selectedYear}`}
-          chartData={chartData}
-          barColor={barColor}
-          maxValue={maxValue}
-          relative_percentage={relative_percentage}
-          external_sums={external_sums}
-          decimal={decimal}
-          isMobile={isMobile}
+        <ComparisonChart
+          key={`area-cc-${selectedYear}-${selectedMetric}`}
+          title={title}
+          data={byYearArea}
+          selectedYears={areaYears}
           showPercentage={showPercentage}
-          compareMode={compareMode}
-          showDollar={showDollar}
-          yearTogglePortal={chartYearTogglePortal}
+          defaultType="area"
+          embedded
+          colors={compareColors && compareColors.length > 0 ? compareColors : undefined}
+        />
+      );
+    } else if (viewMode === "dualline") {
+      // Second line "theme": the shared lib/charts DualLineChart, which draws a
+      // year-over-year pair with a cursor readout and an expandable detail
+      // table. The `line` mode above stays as the Chart.js multi-series
+      // rendering — the two coexist and the caller picks per widget.
+      const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      const extractMonthYear = (name) => {
+        const m = String(name ?? "").match(/^([A-Za-z]+)[-\s_]*(\d{2,4})$/);
+        if (!m) return null;
+        const mon = m[1].slice(0, 3);
+        return {
+          mon: mon.charAt(0).toUpperCase() + mon.slice(1).toLowerCase(),
+          yr: m[2].length === 2 ? `20${m[2]}` : m[2],
+        };
+      };
+
+      // Compare mode (the same "Compare" toggle vertical/line already read)
+      // means one line per METRIC, all at once — matching the contract every
+      // other compare-mode chart type (bars, Chart.js line) already has,
+      // instead of dualline being stuck showing only whichever single metric
+      // is selected via the header pills.
+      if (compareMode && metrics.length > 1) {
+        const byYearPerMetric = {};
+        chartData.forEach((d) => {
+          const my = extractMonthYear(d.name);
+          if (!my) return;
+          const bucket = ((byYearPerMetric[my.yr] ||= {})[my.mon] ||= {});
+          metrics.forEach((metric) => {
+            bucket[metric.key] = Number(d[metric.key]) || 0;
+          });
+        });
+        const yrs = Object.keys(byYearPerMetric).sort();
+        const cur = yrs[yrs.length - 1];
+        const valsFor = (metricKey) =>
+          MONTHS.map((m) => byYearPerMetric[cur]?.[m]?.[metricKey] ?? 0);
+
+        // Same compareColors a metric would get as bars — a metric's color
+        // shouldn't change just because the view mode switched. Falls back
+        // to colorPalette for any caller that doesn't pass compareColors at
+        // all (VerticalBarView defaults it on its own side; this doesn't).
+        const linePalette =
+          compareColors && compareColors.length > 0 ? compareColors : colorPalette;
+        const multiSeries = metrics.map((metric, i) => ({
+          key: metric.key,
+          label: metric.label,
+          color: linePalette[i % linePalette.length] || barColor,
+          values: valsFor(metric.key),
+        }));
+
+        const primaryValues = multiSeries[multiSeries.length - 1].values;
+        const allValues = multiSeries.flatMap((s) => s.values);
+
+        return (
+          <DualLineChart
+            key={`dualline-compare-${selectedYear}`}
+            theme={{ base: "light", radius: 0, backdrop: "none", accent: barColor, surface: "#ffffff" }}
+            size="fill"
+            width="100%"
+            floatingHeader
+            expandable
+            showHeader={false}
+            showBorder={false}
+            title={title}
+            valueLabel={title}
+            labels={MONTHS}
+            multiSeries={multiSeries}
+            total={
+              showPercentage
+                ? allValues.filter((v) => v > 0).reduce((s, v, _, a) => s + v / a.length, 0)
+                : allValues.reduce((s, v) => s + v, 0)
+            }
+            cursorIndex={primaryValues.reduce((b, v, i) => (v > primaryValues[b] ? i : b), 0)}
+            formatValue={(v) =>
+              `${showDollar ? "$" : ""}${formatLabel(v, showPercentage)}`
+            }
+            legendPortal={chartLegendPortal}
+          />
+        );
+      }
+
+      const byYear = {};
+      chartData.forEach((d) => {
+        const my = extractMonthYear(d.name);
+        if (!my) return;
+        const v = d.value !== undefined ? d.value : d[selectedMetric];
+        (byYear[my.yr] ||= {})[my.mon] = Number(v) || 0;
+      });
+      const yrs = Object.keys(byYear).sort();
+      const prev = yrs[yrs.length - 2];
+      const cur = yrs[yrs.length - 1];
+      const vals = (y) => (y ? MONTHS.map((m) => byYear[y]?.[m] ?? 0) : []);
+      const after = vals(cur);
+
+      return (
+        <DualLineChart
+          key={`dualline-${selectedYear}-${selectedMetric}`}
+          theme={{ base: "light", radius: 0, backdrop: "none", accent: barColor, surface: "#ffffff" }}
+          size="fill"
+          width="100%"
+          floatingHeader
+          expandable
+          // The widget header already shows the title and the footer shows the
+          // stats — without this the card renders a second, larger heading.
+          showHeader={false}
+          showBorder={false}
+          title={title}
+          valueLabel={title}
+          labels={MONTHS}
+          singleSeries={!prev}
+          before={{ label: prev || "", color: "#94a3b8", values: vals(prev) }}
+          after={{ label: cur || "", color: barColor, values: after }}
+          // Summing a rate is meaningless — twelve months of load factor added
+          // up gave "263%". Percentages average; absolute counts sum.
+          total={
+            showPercentage
+              ? after.filter((v) => v > 0).reduce((s, v, _, a) => s + v / a.length, 0)
+              : after.reduce((s, v) => s + v, 0)
+          }
+          cursorIndex={after.reduce((b, v, i) => (v > after[b] ? i : b), 0)}
+          formatValue={(v) =>
+            `${showDollar ? "$" : ""}${formatLabel(v, showPercentage)}`
+          }
+          legendPortal={chartLegendPortal}
         />
       );
     } else if (viewMode === "line") {
+      // Multi-metric compare doesn't fit ComparisonChart's "N years" model
+      // (each metric would need its own value axis) — keep the existing
+      // Chart.js multi-series rendering for that case only.
+      if (compareMode && metrics.length > 1) {
+        return (
+          <LineChartView
+            key={`line-${selectedYear}`}
+            chartData={chartData}
+            compareMode={compareMode}
+            metrics={metrics}
+            colorPalette={colorPalette}
+            decimal={decimal}
+            barColor={barColor}
+            isMobile={isMobile}
+            showPercentage={showPercentage}
+            showDollar={showDollar}
+            yearTogglePortal={chartYearTogglePortal}
+            maxValue={sharedMaxValue}
+          />
+        );
+      }
+
+      // Single metric, compared across years — the exact same Recharts line
+      // renderer (ui/ComparisonChart) the standalone Operations dashboard
+      // charts use, instead of the separate Chart.js/canvas implementation
+      // this used to be.
+      //
+      // ComparisonChart's own month sort keys off FULL month names
+      // ("January" — its `MONTHS` map's own keys), not abbreviations; it
+      // abbreviates for display itself. Passing "Jan" as `name` made every
+      // row miss that lookup and silently fall back to sorting by value
+      // instead of chronologically — the reshuffled x-axis (May landing at
+      // the end).
+      const FULL_MONTHS_LINE = { Jan: "January", Feb: "February", Mar: "March", Apr: "April", May: "May", Jun: "June", Jul: "July", Aug: "August", Sep: "September", Oct: "October", Nov: "November", Dec: "December" };
+      const extractMonthYearLine = (name) => {
+        const m = String(name ?? "").match(/^([A-Za-z]+)[-\s_]*(\d{2,4})$/);
+        if (!m) return null;
+        const abbr = m[1].slice(0, 3);
+        const abbr3 = abbr.charAt(0).toUpperCase() + abbr.slice(1).toLowerCase();
+        return {
+          mon: FULL_MONTHS_LINE[abbr3] || m[1],
+          yr: m[2].length === 2 ? `20${m[2]}` : m[2],
+        };
+      };
+      const byYearLine = {};
+      chartData.forEach((d) => {
+        const my = extractMonthYearLine(d.name);
+        if (!my) return;
+        const v = d.value !== undefined ? d.value : d[selectedMetric];
+        (byYearLine[my.yr] ||= []).push({ name: my.mon, value: Number(v) || 0 });
+      });
+      const lineYears = Object.keys(byYearLine)
+        .map(Number)
+        .filter((n) => !isNaN(n));
+
       return (
-        <LineChartView
-          key={`line-${selectedYear}`}
-          chartData={chartData}
-          compareMode={compareMode}
-          metrics={metrics}
-          colorPalette={colorPalette}
-          decimal={decimal}
-          barColor={barColor}
-          isMobile={isMobile}
+        <ComparisonChart
+          key={`line-cc-${selectedYear}-${selectedMetric}`}
+          title={title}
+          data={byYearLine}
+          selectedYears={lineYears}
           showPercentage={showPercentage}
-          showDollar={showDollar}
-          yearTogglePortal={chartYearTogglePortal}
+          defaultType="line"
+          embedded
+          colors={compareColors && compareColors.length > 0 ? compareColors : undefined}
         />
       );
     }
     return null;
   };
 
-  const containerHeight = isMobile ? "h-[75vh]" : height;
+  // Width-gated only: a short-but-wide desktop keeps the caller's height so
+  // grid layouts hold their shape; a genuinely narrow screen still gets 75vh.
+  const containerHeight = isNarrow ? "h-[75vh]" : height;
 
-  return (
+  // In the expanded modal the widget always gets the full-width treatment,
+  // regardless of how cramped its tile was on the page behind it.
+  const effectiveDensity = expanded ? "lg" : density;
+
+  const shell = (
     <div
-      className={`${containerHeight} flex flex-col bg-white overflow-hidden border-2 border-gray-300 ${className}`}
+      ref={sizeRef}
+      className={`${expanded ? "h-full" : containerHeight} flex flex-col bg-white overflow-hidden border-2 border-gray-300 ${expanded ? "" : className}`}
     >
       <WidgetHeader
         HeaderIcon={HeaderIcon}
@@ -535,11 +945,25 @@ const RankedDataWidget = ({
         isMobile={isMobile}
         isLoading={showLoadingState}
         chartYearToggleRef={setChartYearTogglePortal}
+        density={effectiveDensity}
+        expanded={expanded}
+        // The funnel carries its own detail affordance, so the widget-level
+        // expand is suppressed for it to avoid two competing expanders.
+        onToggleExpand={
+          viewMode === "funnel" ? undefined : () => setExpanded((e) => !e)
+        }
       />
 
       <div className="flex-1 overflow-hidden relative bg-white">
         <div className="absolute inset-0 flex flex-col">
-          <div className="flex-1 overflow-y-auto px-3 sm:px-4 md:px-5 lg:px-6 py-1.5 sm:py-2 custom-scrollbar-minimal">
+          {/* Was px-3→lg:px-6: up to 24px of dead gutter on each side, which a
+              chart in a 3-column bento tile cannot afford. The plot's own axis
+              margins already provide the breathing room. */}
+          <div
+            className={`flex-1 overflow-y-auto custom-scrollbar-minimal ${
+              effectiveDensity === "sm" ? "px-1.5 py-1" : "px-2.5 py-1.5"
+            }`}
+          >
             {renderContent()}
           </div>
         </div>
@@ -562,6 +986,7 @@ const RankedDataWidget = ({
           setSortDirection={setSortDirection}
           metrics={metrics}
           showComparable={showComparable}
+          hasMultiYearData={hasMultiYearData || hasYearSuffixData}
           stacked={compareMode}
           setStacked={setCompareMode}
           compareMode={compareMode}
@@ -569,9 +994,35 @@ const RankedDataWidget = ({
           isMobile={isMobile}
           isLoading={showLoadingState}
           defaultMetricsCollapsed={defaultMetricsCollapsed}
+          density={effectiveDensity}
+          chartLegendRef={setChartLegendPortal}
         />
       )}
     </div>
+  );
+
+  if (!expanded) return shell;
+
+  // Expanded: the tile keeps its place in the grid (so the bento layout does
+  // not reflow) while a full-size copy renders in a modal on top.
+  return (
+    <>
+      <div className={`${containerHeight} ${className}`} />
+      {createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/50 p-4 sm:p-8"
+          onClick={() => setExpanded(false)}
+        >
+          <div
+            className="w-full max-w-[1100px] h-[80vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {shell}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 };
 

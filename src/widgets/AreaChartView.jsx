@@ -10,6 +10,7 @@ import {
   Legend,
 } from "recharts";
 import { formatLabel } from "./dataUtils.js";
+import { AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_LINE_PROPS, AXIS_GRID_PROPS } from "../lib/charts/theme";
 
 const SANS = "'Space Grotesk', ui-sans-serif, system-ui, sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -70,7 +71,9 @@ const parseMonth = (monthStr) => {
     december: 11,
   };
 
-  const match = str.match(/^([a-z]+)-?(\d{2,4})$/i);
+  // Was /^([a-z]+)-?(\d{2,4})$/ — no space allowed, so "Jan 2025" never
+  // parsed and the whole series silently vanished.
+  const match = str.match(/^([a-z]+)[-\s_]*(\d{2,4})$/i);
   if (match) {
     const monthName = match[1].toLowerCase();
     let year = parseInt(match[2]);
@@ -86,7 +89,17 @@ const parseMonth = (monthStr) => {
   return null;
 };
 
-const groupByYear = (data) => {
+// In single-metric mode the widget emits points as `{name, value}`, but in
+// compare mode it emits `{name, [metricKey]: n, ...}` with no `value` at all.
+// Reading `item.value` unconditionally therefore returned undefined for every
+// point in compare mode, nulled the whole series and rendered an empty chart.
+const resolveValue = (item, valueKey) => {
+  if (item.value !== undefined && item.value !== null) return item.value;
+  if (valueKey && item[valueKey] !== undefined) return item[valueKey];
+  return undefined;
+};
+
+const groupByYear = (data, valueKey) => {
   const yearGroups = {};
   const monthOrder = [];
 
@@ -97,7 +110,7 @@ const groupByYear = (data) => {
       if (!yearGroups[year]) {
         yearGroups[year] = {};
       }
-      yearGroups[year][monthName] = item.value;
+      yearGroups[year][monthName] = resolveValue(item, valueKey);
 
       if (!monthOrder.includes(monthName)) {
         monthOrder.push(monthName);
@@ -108,8 +121,8 @@ const groupByYear = (data) => {
   return { yearGroups, monthOrder };
 };
 
-const createParallelData = (data) => {
-  const { yearGroups, monthOrder } = groupByYear(data);
+const createParallelData = (data, valueKey) => {
+  const { yearGroups, monthOrder } = groupByYear(data, valueKey);
   const years = Object.keys(yearGroups).sort();
 
   const parallelData = monthOrder.map((month) => {
@@ -134,8 +147,8 @@ const colors = [
   "#EC4899",
 ];
 
-const AreaChartView = ({ chartData, decimal = true }) => {
-  const { parallelData, years } = createParallelData(chartData);
+const AreaChartView = ({ chartData, decimal = true, valueKey = null, maxValue = null }) => {
+  const { parallelData, years } = createParallelData(chartData, valueKey);
   const hasMultipleYears = years.length > 2;
   const [activeYear, setActiveYear] = useState(
     hasMultipleYears ? years[years.length - 1] : null,
@@ -146,7 +159,13 @@ const AreaChartView = ({ chartData, decimal = true }) => {
   const allValues = parallelData.flatMap((item) =>
     visibleYears.map((year) => item[`year${year}`] || 0),
   );
-  const maxValue = Math.max(...allValues);
+  const localMaxValue = Math.max(...allValues);
+  // Shared with VerticalBarView/LineChartView via the `maxValue` prop (passed
+  // by RankedDataWidget) so the Y-axis stops moving when the view type
+  // switches — falls back to this view's own scan when no shared value was
+  // given (e.g. standalone usage outside the ranked widget).
+  const resolvedMaxValue =
+    typeof maxValue === "number" && maxValue > 0 ? maxValue : localMaxValue;
 
   const generateTickValues = (maxVal) => {
     if (maxVal < 1) {
@@ -169,8 +188,8 @@ const AreaChartView = ({ chartData, decimal = true }) => {
           style={{
             display: "flex",
             justifyContent: "flex-end",
-            gap: 4,
-            padding: "8px 16px 4px",
+            gap: 2,
+            padding: "4px 8px 2px",
           }}
         >
           {years.map((year) => (
@@ -178,15 +197,15 @@ const AreaChartView = ({ chartData, decimal = true }) => {
               key={year}
               onClick={() => setActiveYear(year)}
               style={{
-                fontSize: 12,
+                fontSize: 10,
                 fontWeight: 700,
                 fontFamily: MONO,
-                padding: "3px 12px",
-                border: activeYear === year ? "1px solid #1F2937" : "1px solid #D1D5DB",
-                background: activeYear === year ? "#1F2937" : "#F9FAFB",
-                color: activeYear === year ? "#ffffff" : "#4B5563",
+                padding: "2px 7px",
+                border: "none",
+                background: activeYear === year ? "var(--chart-tooltip-bg)" : "transparent",
+                color: activeYear === year ? "var(--chart-tick-strong)" : "var(--chart-tick-dim)",
                 cursor: "pointer",
-                transition: "background-color 0.15s, border-color 0.15s",
+                transition: "background-color 0.15s, color 0.15s",
               }}
             >
               {year}
@@ -198,7 +217,9 @@ const AreaChartView = ({ chartData, decimal = true }) => {
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={parallelData}
-            margin={{ top: 4, right: 12, left: -20, bottom: -10 }}
+            // left was -20, which pulled the plot over the Y-axis gutter and
+            // clipped the tick labels once the axis width was trimmed.
+            margin={{ top: 4, right: 12, left: 0, bottom: -10 }}
           >
             <defs>
               {visibleYears.map((year, index) => {
@@ -220,54 +241,50 @@ const AreaChartView = ({ chartData, decimal = true }) => {
               })}
             </defs>
 
+            {/* Same axis treatment as the bar view and DualLineChart: dashed
+                horizontal rules, no spines or tick marks, calm gray labels. */}
             <CartesianGrid
-              strokeDasharray="2 4"
-              stroke="rgba(148,163,184,0.3)"
+              {...AXIS_GRID_PROPS}
               vertical={false}
               strokeWidth={1}
             />
 
             <XAxis
               dataKey="name"
-              axisLine={true}
-              tickLine={true}
-              tick={{
-                fontSize: 11,
-                fill: "#475569",
-                fontWeight: "600",
-                fontFamily: SANS,
-              }}
-              height={50}
-              interval={0}
+              {...AXIS_LINE_PROPS}
+              tick={AXIS_CATEGORY_TICK}
+              height={30}
+              interval="preserveStartEnd"
+              minTickGap={4}
               padding={{ left: 8, right: 8 }}
             />
 
             <YAxis
-              axisLine={true}
-              tickLine={true}
-              tick={{
-                fontSize: 10,
-                fill: "#64748b",
-                fontWeight: "500",
-                fontFamily: MONO,
-              }}
+              {...AXIS_LINE_PROPS}
+              tick={AXIS_VALUE_TICK}
               tickFormatter={(value) => formatLabel(value, decimal)}
-              domain={[0, maxValue * 1.1]}
-              ticks={generateTickValues(maxValue * 1.1)}
+              domain={[0, resolvedMaxValue]}
+              ticks={generateTickValues(resolvedMaxValue)}
               allowDecimals={decimal}
-              width={80}
+              // 80px was dead gutter, but 38px clipped 4-glyph ticks like
+              // "98%" / "250K". 46px fits them with a little air.
+              width={46}
             />
 
             <Tooltip content={<CustomTooltip />} />
 
+            {/* `line` drew a dash-plus-ring marker that read as dated; a plain
+                dot matches the legend style used elsewhere in the widget. */}
             <Legend
               verticalAlign="top"
               align="right"
-              height={24}
-              iconType="line"
+              height={20}
+              // Square swatch to match the bar and dual-line legends.
+              iconType="square"
+              iconSize={9}
               wrapperStyle={{
-                paddingBottom: "4px",
-                fontSize: "12px",
+                paddingBottom: "2px",
+                fontSize: "11px",
                 fontWeight: "700",
                 fontFamily: MONO,
               }}
@@ -283,20 +300,22 @@ const AreaChartView = ({ chartData, decimal = true }) => {
                   dataKey={`year${year}`}
                   name={year}
                   stroke={color}
-                  strokeWidth={3}
+                  strokeWidth={2.5}
                   fill={`url(#gradient${year})`}
                   connectNulls={false}
+                  // A ringed dot on all 12 months was heavier than the line it
+                  // sat on; the point is now a small solid mark and the ring is
+                  // reserved for the hovered one.
                   dot={{
                     fill: color,
-                    strokeWidth: 2,
-                    stroke: "#fff",
-                    r: 4,
+                    strokeWidth: 0,
+                    r: 2.5,
                   }}
                   activeDot={{
-                    r: 6,
-                    stroke: color,
-                    strokeWidth: 3,
-                    fill: "#fff",
+                    r: 5,
+                    stroke: "#fff",
+                    strokeWidth: 2,
+                    fill: color,
                   }}
                 />
               );

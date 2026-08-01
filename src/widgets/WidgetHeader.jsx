@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize2, X } from 'lucide-react';
 
 const SANS = "'Space Grotesk', ui-sans-serif, system-ui, sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -22,9 +22,21 @@ const WidgetHeader = ({
   // place in the header instead of floating inside the chart body, where it
   // ate into the plot area and collided with the legend.
   chartYearToggleRef,
+  // Portal target for a chart view's compact 2-series legend (e.g. "● 2025
+  // ● 2026"). Chart views only portal here when they have exactly 2 items —
+  // any more and a header row gets crowded, so they keep floating their own
+  // in-chart legend badge instead. Same "host owns the slot, chart owns the
+  // content" split as chartYearToggleRef.
+  chartLegendRef,
   isMobile = false,
-  isLoading = false
+  isLoading = false,
+  // "sm" | "md" | "lg" — the widget's own measured width, not the viewport.
+  density = 'lg',
+  expanded = false,
+  onToggleExpand
 }) => {
+  const isSm = density === 'sm';
+
   if (isLoading) {
     return (
       <div className={`${isMobile ? 'px-2 pt-1.5' : 'px-4 pt-2.5'} py-2 bg-white border-b border-gray-100`}>
@@ -87,34 +99,55 @@ const WidgetHeader = ({
     </div>
   );
 
+  // Text-with-underline rather than filled pills. Three solid dark chips next
+  // to a solid dark year toggle made the header a wall of competing buttons and
+  // buried the title; the active mark now carries the state instead of a fill.
   const metricPills = metrics && metrics.length > 1 && (
-    <div className={`flex ${isMobile ? 'gap-1' : 'gap-1.5'} flex-shrink-0`}>
+    <div className={`flex ${isSm ? 'gap-2' : 'gap-3'} flex-shrink-0`}>
       {metrics.map(metric => (
         <button
           key={metric.key}
           onClick={() => setSelectedMetric(metric.key)}
-          className={`font-semibold whitespace-nowrap transition-colors duration-150 flex items-center justify-center ${
-            isMobile ? 'px-1.5 py-1 text-[9px] min-h-[24px]' : 'px-2.5 py-1.5 text-[11px] min-h-[28px]'
+          title={metric.label}
+          className={`relative whitespace-nowrap font-bold transition-colors duration-150 pb-0.5 ${
+            isSm ? 'text-[10px]' : 'text-[12px]'
           } ${
             selectedMetric === metric.key
-              ? 'bg-gray-900 text-white'
-              : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:text-gray-900'
+              ? "text-gray-900"
+              : "text-gray-500 hover:text-gray-900"
           }`}
+          style={{ fontFamily: SANS }}
         >
           {metric.label}
+          <span
+            className={`absolute inset-x-0 -bottom-px h-[2px] transition-colors duration-150 ${
+              selectedMetric === metric.key ? 'bg-gray-900' : 'bg-transparent'
+            }`}
+          />
         </button>
       ))}
     </div>
   );
 
   return (
-    <div className={`${isMobile ? 'px-2.5 py-2' : 'px-4 py-2'} bg-white`}>
-      <div className="flex items-center justify-between gap-2">
+    <div className={`${isSm ? 'px-2 py-1.5' : isMobile ? 'px-2.5 py-2' : 'px-4 py-2'} bg-white`}>
+      {/* items-start, not items-center: the title wraps instead of shrinking
+          or truncating (see the h2 below), so this row can no longer assume
+          every child is exactly one line tall. */}
+      <div className="flex items-start justify-between gap-1.5">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          <div className="flex min-w-0 items-center gap-1.5 sm:gap-2.5">
-            {HeaderIcon && <HeaderIcon className={`${isMobile ? 'w-3.5 h-3.5' : 'w-[18px] h-[18px]'} text-gray-500 flex-shrink-0`} />}
+          <div className="flex min-w-0 items-start gap-1.5 sm:gap-2.5">
+            {HeaderIcon && <HeaderIcon className={`${isSm ? 'w-3.5 h-3.5' : isMobile ? 'w-3.5 h-3.5' : 'w-[18px] h-[18px]'} text-gray-500 flex-shrink-0 mt-0.5`} />}
+            {/* Wraps instead of truncating or shrinking to fit — a fixed-size
+                JS measurement (tried twice: ResizeObserver, then also
+                re-checking after webfont load) kept silently failing to
+                catch every case a title could overflow its box. Wrapping
+                can't fail that way: the browser lays out exactly however
+                much space text needs, no measurement to get wrong. */}
             <h2
-              className={`truncate font-extrabold text-gray-900 ${isMobile ? 'text-[14px]' : 'text-[17px]'}`}
+              className={`min-w-0 flex-1 font-extrabold text-gray-900 leading-tight ${
+                isSm ? 'text-[13px]' : isMobile ? 'text-[14px]' : 'text-[17px]'
+              }`}
               style={{ fontFamily: SANS, letterSpacing: '-0.01em' }}
             >
               {title}
@@ -122,9 +155,30 @@ const WidgetHeader = ({
           </div>
           {yearNav}
         </div>
-        <div className="flex items-center gap-2">
-          <div ref={chartYearToggleRef} className="flex items-center gap-1" />
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {/* Year scope and metric selector are different kinds of control, so
+              they stay visually distinct — but both are now quiet: the year
+              toggle is a light segmented track (styled by the chart views that
+              portal into here) and the metrics are underlined text. The rule
+              between them drops out when no year toggle is mounted. */}
+          <div
+            ref={chartYearToggleRef}
+            className="peer flex items-center gap-0.5 empty:hidden"
+          />
+          {metrics && metrics.length > 1 && (
+            <span className="hidden peer-[:not(:empty)]:block w-px h-4 bg-gray-200" />
+          )}
           {metricPills}
+          {onToggleExpand && (
+            <button
+              onClick={onToggleExpand}
+              title={expanded ? 'Close' : 'Expand'}
+              aria-label={expanded ? 'Close expanded view' : 'Expand widget'}
+              className="flex items-center justify-center p-1 -mr-1 text-gray-300 hover:text-gray-700 transition-colors duration-150"
+            >
+              {expanded ? <X size={14} /> : <Maximize2 size={14} />}
+            </button>
+          )}
         </div>
       </div>
     </div>

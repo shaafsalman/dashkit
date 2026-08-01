@@ -71,6 +71,9 @@ const FunnelChart = memo(
     className = "",
     radius,
     compact = false,
+    // Both default to today's behavior so existing usages are unaffected.
+    showBandValues = true,
+    showHeader = true,
   }) => {
     const t = resolveTheme(theme, "light");
     const fmt = formatValue || ((v) => Number(v || 0).toLocaleString("en-US"));
@@ -193,10 +196,14 @@ const FunnelChart = memo(
                     {pctTxt}
                   </text>
                 )}
-                {/* value — bottom-center */}
-                <text x={cx} y={bot - PAD * 1.1} textAnchor="middle" fontFamily={MONO} fontSize={valuePx} fontWeight={800} letterSpacing="-0.02em" fill="#fff" pointerEvents="none">
-                  {fmt(r.value)}
-                </text>
+                {/* value — bottom-center. Suppressed when the host already
+                    shows the number elsewhere (e.g. the ranked widget's own
+                    stats), where repeating it inside the band is just noise. */}
+                {showBandValues && (
+                  <text x={cx} y={bot - PAD * 1.1} textAnchor="middle" fontFamily={MONO} fontSize={valuePx} fontWeight={800} letterSpacing="-0.02em" fill="#fff" pointerEvents="none">
+                    {fmt(r.value)}
+                  </text>
+                )}
               </g>
             );
           })}
@@ -283,9 +290,9 @@ const FunnelChart = memo(
     return (
       <ChartCard
         theme={t}
-        title={title}
-        subtitle={subtitle}
-        icon={icon}
+        title={showHeader ? title : null}
+        subtitle={showHeader ? subtitle : null}
+        icon={showHeader ? icon : null}
         iconColor={iconColor}
         controls={controls ?? []}
         onControl={onControl}
@@ -296,7 +303,7 @@ const FunnelChart = memo(
         radius={radius}
         compact={compact}
         floatingHeader
-        headline={resolvedHeadline}
+        headline={showHeader ? resolvedHeadline : null}
       >
         {({ detailed }) => renderBody(detailed)}
       </ChartCard>

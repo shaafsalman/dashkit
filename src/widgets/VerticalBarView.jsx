@@ -9,56 +9,117 @@ import {
   ResponsiveContainer,
   Cell,
   LabelList,
+  Tooltip as RechartsTooltip,
 } from "recharts";
 import { formatLabel } from "./dataUtils.js";
 import HoverTooltip from "./HoverTooltip";
+import useContainerDensity from "./useContainerDensity.js";
+import { AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_LINE_PROPS, AXIS_GRID_PROPS } from "../lib/charts/theme";
 
 const SANS = "'Space Grotesk', ui-sans-serif, system-ui, sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
-const MAX_BAR_WIDTH = 32;
+// Upper clamps raised across the board: calculateBarSize divides the REAL plot
+// width by the bar count, so on a full-width tile every mode was hitting its
+// ceiling and drawing thin bars marooned in white space. The minimums are
+// unchanged, so narrow tiles behave exactly as before.
+const MAX_BAR_WIDTH = 46;
 const MIN_BAR_WIDTH = 28;
 
-const COMPARE_MAX_BAR_WIDTH = 24;
-const COMPARE_MIN_BAR_WIDTH = 12;
-const COMPARE_BAR_CATEGORY_GAP = "20%";
-const COMPARE_BAR_CATEGORY_GAP_DENSE = "12%";
-const COMPARE_BAR_GAP = 2;
-const COMPARE_LABEL_FONT_SIZE = "10px";
+const COMPARE_MAX_BAR_WIDTH = 34;
+const YEAR_MAX_BAR_WIDTH = 42;
+const COMBINED_MAX_BAR_WIDTH = 28;
 
-const YEAR_MAX_BAR_WIDTH = 28;
-const YEAR_MIN_BAR_WIDTH = 24;
-const YEAR_BAR_CATEGORY_GAP = "25%";
-const YEAR_BAR_CATEGORY_GAP_DENSE = "15%";
-const YEAR_BAR_GAP = 1;
-const YEAR_LABEL_FONT_SIZE = "10px";
+// Compare/year/combined modes render `categories * barsPerGroup` bars in one
+// plot (e.g. 12 months x 2 metrics = 24). The old per-mode MIN_BAR_WIDTH
+// floors (12/24/14px) and fixed gap percentages were an independent guess
+// from the actual bar-size math below — once `categories * barsPerGroup`
+// bars at their floor width, plus gaps, exceeded the real measured plotWidth,
+// Recharts rendered the excess off-canvas rather than shrinking anything,
+// which is why bars silently vanished past a certain month. `computeBarSize`
+// is the exact algebraic inverse of Recharts' own layout equation — bar
+// width, category gap and bar gap all come from ONE shared source of truth
+// (`getDensityTier`, keyed on total bar count) — so the total rendered width
+// can never exceed plotWidth, for any category/metric count. There is no
+// "target" minimum any more, only a 2px sanity floor.
+const ABS_MIN_BAR_WIDTH = 2;
 
-const COMBINED_MAX_BAR_WIDTH = 20;
-const COMBINED_MIN_BAR_WIDTH = 14;
-const COMBINED_BAR_CATEGORY_GAP = "18%";
-const COMBINED_BAR_CATEGORY_GAP_DENSE = "10%";
-const COMBINED_BAR_GAP = 1;
-const COMBINED_LABEL_FONT_SIZE = "7px";
+const getDensityTier = (totalBars) => {
+  if (totalBars <= 16) return { gapFrac: 0.16, barGapPx: 2 }; // sparse
+  if (totalBars <= 32) return { gapFrac: 0.1, barGapPx: 1.5 }; // dense
+  return { gapFrac: 0.05, barGapPx: 1 }; // very dense
+};
+
+const computeBarSize = (plotWidth, categories, barsPerGroup, modeMax) => {
+  const totalBars = categories * barsPerGroup;
+  const { gapFrac, barGapPx } = getDensityTier(totalBars);
+  const raw =
+    (plotWidth * (1 - gapFrac) - categories * (barsPerGroup - 1) * barGapPx) /
+    totalBars;
+  return Math.max(ABS_MIN_BAR_WIDTH, Math.min(raw, modeMax));
+};
+
+// Value-label sizing keyed on the FINAL computed bar width — labels always
+// render (never hidden for lack of room, per explicit design ask); below
+// ~13px there isn't room for horizontal text at any reasonable size, so the
+// label rotates instead of disappearing.
+const getLabelSizing = (barSize) => {
+  if (barSize >= 24) return { fontSize: 11, rotate: false, compact: false };
+  if (barSize >= 18) return { fontSize: 9, rotate: false, compact: false };
+  if (barSize >= 13) return { fontSize: 7.5, rotate: false, compact: false };
+  if (barSize >= 9) return { fontSize: 6.5, rotate: true, compact: false };
+  return { fontSize: 6, rotate: true, compact: true };
+};
+
+// 0-decimal M/K for the smallest label tier — formatLabel's fixed .toFixed(1)
+// is too wide to fit a rotated 6px label; other chart views depend on
+// formatLabel's precision, so this stays local rather than changing it.
+const formatCompactLabel = (value) => {
+  const abs = Math.abs(value);
+  if (abs >= 1000000) return `${Math.round(value / 1000000)}M`;
+  if (abs >= 1000) return `${Math.round(value / 1000)}K`;
+  return `${Math.round(value)}`;
+};
 
 const CHART_MARGINS = {
-  top: 16,
-  right: -5,
-  left: -5,
+  // Reserves a clean band for the legend, which floats at top-2 inside the plot
+  // box. At the old 16px the tallest bars and their value labels ran straight
+  // into it.
+  top: 34,
+  right: 4,
+  // The YAxis now declares an explicit 34px width, so the negative pull-in that
+  // used to claw back Recharts' oversized default gutter is no longer needed.
+  left: 0,
   bottom: -10,
 };
 
 const CHART_MARGINS_HORIZONTAL = {
   top: 10,
-  right: 48,
-  left: -20,
+  // The value label here renders at LABEL_FONT_SIZE (12px), not 9px — "37.2M"
+  // at 12px mono bold is ~38px, plus its own 10px offset from the bar end =
+  // ~48px needed; 40 was still clipping it to "37.2" or narrower.
+  right: 56,
+  // The YAxis width reduction below (90 -> 45) already reclaims the empty
+  // band on its own — stacking a MORE negative margin on top of that (as a
+  // previous pass did, -45) double-counted the fix and pushed the category
+  // labels clean off the left edge, invisible. This only needs to claw back
+  // Recharts' small default gutter now, not the whole 90px.
+  left: -8,
   bottom: 0,
 };
 
 const BAR_CATEGORY_GAP = "22%";
+// 22% between rows reads fine for a handful of vertical bars, but stacked
+// down a tall horizontal-list tile (8-10 station/route rows) it compounds
+// into a lot of dead vertical space between bars that are otherwise packed
+// tight — this mode gets its own, tighter default.
+const BAR_CATEGORY_GAP_HORIZONTAL = "8%";
 const BAR_CATEGORY_GAP_SCROLL = "8%";
 
-const LABEL_FONT_SIZE = "10px";
-const LABEL_FONT_SIZE_SCROLL = "9px";
+// Bumped a step: at 10px the values were the smallest type on the chart while
+// being the thing you actually read off it.
+const LABEL_FONT_SIZE = "12px";
+const LABEL_FONT_SIZE_SCROLL = "10px";
 
 const AXIS_FONT_SIZE = 12;
 const AXIS_FONT_SIZE_SCROLL = 8;
@@ -66,7 +127,6 @@ const AXIS_FONT_SIZE_SCROLL = 8;
 const SCROLL_THRESHOLD_MOBILE = 4;
 const SCROLL_THRESHOLD_DESKTOP = 12;
 const VERTICAL_SCROLL_THRESHOLD = 12;
-const DENSE_DATA_THRESHOLD = 8;
 
 const INVERSE_MIN_HEIGHT = 300;
 const INVERSE_MAX_HEIGHT = 600;
@@ -119,10 +179,28 @@ const VerticalBarView = ({
     "#8b4513",
   ],
   yearTogglePortal = null,
+  // Portal target for the compare-mode metric legend — the ranked widget's
+  // own footer (centered), instead of floating over the plot where it ate
+  // into the bars' vertical room.
+  legendPortal = null,
 }) => {
   const [hoveredBar, setHoveredBar] = useState(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [selectedYear, setSelectedYear] = useState(null);
+  // Legend entries double as visibility toggles; a hidden series' dataKey lives
+  // here and its bars are filtered out of the chart.
+  const [hiddenSeries, setHiddenSeries] = useState(() => new Set());
+
+  const toggleSeries = (key) =>
+    setHiddenSeries((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  // Real rendered width of this chart, so bar sizing scales with the bento tile
+  // instead of assuming a fixed 400px plot.
+  const [plotRef, , measuredWidth] = useContainerDensity();
 
   const generateTickValues = (maxVal) => {
     const roundedMax = Math.ceil(maxVal / 5) * 5;
@@ -736,49 +814,39 @@ const VerticalBarView = ({
     ? INVERSE_MAX_HEIGHT
     : calculateInverseHeight();
 
+  // Bar widths used to divide a hardcoded 400px, so a chart in a 9-column tile
+  // drew the same skinny bars as one in a 3-column tile. Divide the REAL plot
+  // width instead (minus the axis gutter) so bars grow with the tile; the
+  // existing MIN/MAX clamps still bound the result.
+  const plotWidth = Math.max((measuredWidth || 400) - 40, 160);
+
   const calculateBarSize = () => {
     if (isCombinedMode) {
       const totalBarsPerGroup = metrics.length + (total ? 1 : 0);
-      const combinedBarSize = Math.min(
-        COMPARE_MAX_BAR_WIDTH,
-        Math.max(
-          COMPARE_MIN_BAR_WIDTH,
-          400 / (dataWithMissingYears.length * totalBarsPerGroup),
-        ),
-      );
-      return Math.max(
-        COMPARE_MIN_BAR_WIDTH,
-        Math.min(combinedBarSize, COMPARE_MAX_BAR_WIDTH),
+      return computeBarSize(
+        plotWidth,
+        dataWithMissingYears.length,
+        totalBarsPerGroup,
+        COMBINED_MAX_BAR_WIDTH,
       );
     }
 
     if (isYearMode) {
-      const multiplier = detectedYears.length;
-      const yearBarSize = Math.min(
+      return computeBarSize(
+        plotWidth,
+        dataWithMissingYears.length,
+        detectedYears.length,
         YEAR_MAX_BAR_WIDTH,
-        Math.max(
-          YEAR_MIN_BAR_WIDTH,
-          400 / (dataWithMissingYears.length * multiplier),
-        ),
-      );
-      return Math.max(
-        YEAR_MIN_BAR_WIDTH,
-        Math.min(yearBarSize, YEAR_MAX_BAR_WIDTH),
       );
     }
 
     if (isCompareMode) {
       const totalBarsPerGroup = metrics.length + (total ? 1 : 0);
-      const compareBarSize = Math.min(
+      return computeBarSize(
+        plotWidth,
+        dataWithMissingYears.length,
+        totalBarsPerGroup,
         COMPARE_MAX_BAR_WIDTH,
-        Math.max(
-          COMPARE_MIN_BAR_WIDTH,
-          400 / (dataWithMissingYears.length * totalBarsPerGroup),
-        ),
-      );
-      return Math.max(
-        COMPARE_MIN_BAR_WIDTH,
-        Math.min(compareBarSize, COMPARE_MAX_BAR_WIDTH),
       );
     }
 
@@ -795,11 +863,11 @@ const VerticalBarView = ({
     const size = shouldScrollHorizontal
       ? Math.min(
           MAX_BAR_WIDTH,
-          Math.max(MIN_BAR_WIDTH, 400 / dataWithMissingYears.length),
+          Math.max(MIN_BAR_WIDTH, plotWidth / dataWithMissingYears.length),
         )
       : Math.min(
           MAX_BAR_WIDTH,
-          Math.max(MIN_BAR_WIDTH, 560 / dataWithMissingYears.length),
+          Math.max(MIN_BAR_WIDTH, plotWidth / dataWithMissingYears.length),
         );
 
     return Math.max(MIN_BAR_WIDTH, Math.min(size, MAX_BAR_WIDTH));
@@ -814,71 +882,12 @@ const VerticalBarView = ({
     return Math.max(1200, totalWidth);
   };
 
-  const calculateCompareMaxValue = () => {
-    if (!isSpecialMode) return maxValue;
-
-    let maxSingleValue = 0;
-
-    if (hasMultipleYears) {
-      processedChartData.forEach((item) => {
-        if (stacked && metrics.length > 1) {
-          if (isCombinedMode && activeYear) {
-            metrics.forEach((metric) => {
-              const value = item[`${metric.key}_${activeYear}`] || 0;
-              if (value > maxSingleValue) {
-                maxSingleValue = value;
-              }
-            });
-            if (total && item[`totalSum_${activeYear}`]) {
-              if (item[`totalSum_${activeYear}`] > maxSingleValue) {
-                maxSingleValue = item[`totalSum_${activeYear}`];
-              }
-            }
-          } else {
-            detectedYears.forEach((year) => {
-              metrics.forEach((metric) => {
-                const value = item[`${metric.key}_${year}`] || 0;
-                if (value > maxSingleValue) {
-                  maxSingleValue = value;
-                }
-              });
-              if (total && item[`totalSum_${year}`]) {
-                if (item[`totalSum_${year}`] > maxSingleValue) {
-                  maxSingleValue = item[`totalSum_${year}`];
-                }
-              }
-            });
-          }
-        } else {
-          detectedYears.forEach((year) => {
-            const value = item[`value_${year}`] || 0;
-            if (value > maxSingleValue) {
-              maxSingleValue = value;
-            }
-          });
-        }
-      });
-    } else {
-      processedChartData.forEach((item) => {
-        metrics.forEach((metric) => {
-          const value = item[metric.key] || 0;
-          if (value > maxSingleValue) {
-            maxSingleValue = value;
-          }
-        });
-
-        if (total && item.totalSum) {
-          if (item.totalSum > maxSingleValue) {
-            maxSingleValue = item.totalSum;
-          }
-        }
-      });
-    }
-
-    return Math.ceil(maxSingleValue * 1.05);
-  };
-
-  const compareMaxValue = calculateCompareMaxValue();
+  // Shared with AreaChartView/LineChartView via the `maxValue` prop
+  // (computed once in RankedDataWidget's sharedMaxValue) so the Y-axis stops
+  // moving when the view type switches. Compare/combined mode's stacked-sum
+  // ceiling is computed there too, matching this component's own
+  // `totalValue`/chartData math instead of re-deriving it independently here.
+  const compareMaxValue = maxValue;
 
   const handleChartMouseMove = (e) => {
     if (!e || e.activeTooltipIndex === undefined) {
@@ -908,9 +917,9 @@ const VerticalBarView = ({
           const r = parseInt(hex.substr(0, 2), 16);
           const g = parseInt(hex.substr(2, 2), 16);
           const b = parseInt(hex.substr(4, 2), 16);
-          const darkenedR = Math.max(0, Math.floor(r * 0.85));
-          const darkenedG = Math.max(0, Math.floor(g * 0.85));
-          const darkenedB = Math.max(0, Math.floor(b * 0.85));
+          const darkenedR = Math.max(0, Math.floor(r * 0.62));
+          const darkenedG = Math.max(0, Math.floor(g * 0.62));
+          const darkenedB = Math.max(0, Math.floor(b * 0.62));
           return `#${darkenedR.toString(16).padStart(2, "0")}${darkenedG
             .toString(16)
             .padStart(2, "0")}${darkenedB.toString(16).padStart(2, "0")}`;
@@ -928,9 +937,9 @@ const VerticalBarView = ({
         const r = parseInt(hex.substr(0, 2), 16);
         const g = parseInt(hex.substr(2, 2), 16);
         const b = parseInt(hex.substr(4, 2), 16);
-        const darkenedR = Math.max(0, Math.floor(r * 0.85));
-        const darkenedG = Math.max(0, Math.floor(g * 0.85));
-        const darkenedB = Math.max(0, Math.floor(b * 0.85));
+        const darkenedR = Math.max(0, Math.floor(r * 0.62));
+        const darkenedG = Math.max(0, Math.floor(g * 0.62));
+        const darkenedB = Math.max(0, Math.floor(b * 0.62));
         return `#${darkenedR.toString(16).padStart(2, "0")}${darkenedG
           .toString(16)
           .padStart(2, "0")}${darkenedB.toString(16).padStart(2, "0")}`;
@@ -942,9 +951,9 @@ const VerticalBarView = ({
         const r = parseInt(hex.substr(0, 2), 16);
         const g = parseInt(hex.substr(2, 2), 16);
         const b = parseInt(hex.substr(4, 2), 16);
-        const darkenedR = Math.max(0, Math.floor(r * 0.85));
-        const darkenedG = Math.max(0, Math.floor(g * 0.85));
-        const darkenedB = Math.max(0, Math.floor(b * 0.85));
+        const darkenedR = Math.max(0, Math.floor(r * 0.62));
+        const darkenedG = Math.max(0, Math.floor(g * 0.62));
+        const darkenedB = Math.max(0, Math.floor(b * 0.62));
         return `#${darkenedR.toString(16).padStart(2, "0")}${darkenedG
           .toString(16)
           .padStart(2, "0")}${darkenedB.toString(16).padStart(2, "0")}`;
@@ -953,55 +962,67 @@ const VerticalBarView = ({
     }
   };
 
-  const getBarCategoryGap = () => {
-    if (isCombinedMode) {
-      return dataWithMissingYears.length > DENSE_DATA_THRESHOLD
-        ? COMPARE_BAR_CATEGORY_GAP_DENSE
-        : COMPARE_BAR_CATEGORY_GAP;
+  // Same shared density tier calculateBarSize() uses, keyed on the SAME total
+  // bar count per mode — gap and bar-size were previously two independent,
+  // unsynced sources of truth, which was part of what let bars overflow.
+  const getSpecialModeTotalBars = () => {
+    if (isCombinedMode || isCompareMode) {
+      return dataWithMissingYears.length * (metrics.length + (total ? 1 : 0));
     }
     if (isYearMode) {
-      return dataWithMissingYears.length > DENSE_DATA_THRESHOLD
-        ? YEAR_BAR_CATEGORY_GAP_DENSE
-        : YEAR_BAR_CATEGORY_GAP;
+      return dataWithMissingYears.length * detectedYears.length;
     }
-    if (isCompareMode) {
-      return dataWithMissingYears.length > DENSE_DATA_THRESHOLD
-        ? COMPARE_BAR_CATEGORY_GAP_DENSE
-        : COMPARE_BAR_CATEGORY_GAP;
+    return null;
+  };
+
+  const getBarCategoryGap = () => {
+    const totalBars = getSpecialModeTotalBars();
+    if (totalBars !== null) {
+      return `${getDensityTier(totalBars).gapFrac * 100}%`;
     }
+    if (isInverse) return BAR_CATEGORY_GAP_HORIZONTAL;
     return shouldScrollHorizontal ? BAR_CATEGORY_GAP_SCROLL : BAR_CATEGORY_GAP;
   };
 
   const getBarGap = () => {
-    if (isCombinedMode) return COMPARE_BAR_GAP;
-    if (isYearMode) return YEAR_BAR_GAP;
-    if (isCompareMode) return COMPARE_BAR_GAP;
-    return 0;
+    const totalBars = getSpecialModeTotalBars();
+    return totalBars !== null ? getDensityTier(totalBars).barGapPx : 0;
   };
 
-  const getLabelFontSize = () => {
-    if (isCombinedMode) return COMPARE_LABEL_FONT_SIZE;
-    if (isYearMode) return YEAR_LABEL_FONT_SIZE;
-    if (isCompareMode) return COMPARE_LABEL_FONT_SIZE;
-    return shouldScrollHorizontal ? LABEL_FONT_SIZE_SCROLL : LABEL_FONT_SIZE;
-  };
+  // Only used by the default (single-series) bar render now — compare/year/
+  // combined modes size their labels off the actual computed bar width via
+  // getLabelSizing() instead.
+  const getLabelFontSize = () =>
+    shouldScrollHorizontal ? LABEL_FONT_SIZE_SCROLL : LABEL_FONT_SIZE;
 
   const renderYearToggle = () => {
     if (!isCombinedMode || detectedYears.length <= 1) return null;
 
+    // Light segmented track: the selected year is a white chip on gray rather
+    // than a solid black fill, so it reads as scope rather than as a primary
+    // action competing with the metric selector beside it.
+    // Plain text years with an underline on the active one — same language as
+    // the metric selector beside it. The boxed segmented track read as a third
+    // competing control group in an already busy header.
     const toggle = (
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2.5">
         {detectedYears.map((year) => (
           <button
             key={year}
             onClick={() => setSelectedYear(year)}
-            className={`px-3 py-1.5 text-xs font-bold transition-colors ${
+            className={`relative pb-0.5 text-[11px] font-bold transition-colors duration-150 ${
               selectedYear === year
-                ? "bg-gray-900 text-white"
-                : "text-gray-600 hover:bg-gray-100 border border-gray-300"
+                ? "text-gray-900"
+                : "text-gray-400 hover:text-gray-600"
             }`}
+            style={{ fontFamily: MONO }}
           >
             {year}
+            <span
+              className={`absolute inset-x-0 -bottom-px h-[2px] ${
+                selectedYear === year ? "bg-gray-900" : "bg-transparent"
+              }`}
+            />
           </button>
         ))}
       </div>
@@ -1069,48 +1090,76 @@ const VerticalBarView = ({
       legendItems.push(...metrics);
     }
 
-    // Right-aligned instead of centered, matching the Area/Line chart legend
-    // placement. Year toggle (when present) already occupies the top-right
-    // corner, so the legend drops below it there instead of overlapping.
-    const topOffset = isCombinedMode && detectedYears.length > 1 ? "top-12" : "top-2";
+    // Right-aligned, matching the Area/Line chart legend placement. The year
+    // toggle now portals into the widget header, so the legend no longer has to
+    // duck below it — it only still does when there is no portal target and the
+    // toggle falls back to rendering inline at top-right.
+    const topOffset =
+      !yearTogglePortal && isCombinedMode && detectedYears.length > 1
+        ? "top-12"
+        : "top-2";
 
-    return (
-      <div className={`absolute ${topOffset} right-2 bg-transparent z-10`}>
-        <div className="flex flex-row flex-wrap justify-end space-x-1 md:space-x-2 gap-y-1">
-          {legendItems.map((metric, index) => (
-            <div
-              key={metric.key}
-              className="flex items-center space-x-1 md:space-x-2"
-            >
-              <div
-                className="w-2 h-2 md:w-3 md:h-3 rounded-sm"
-                style={{
-                  backgroundColor:
-                    (isCompareMode || isCombinedMode) &&
-                    index === 0 &&
-                    total &&
-                    (metric.key === "totalSum" ||
-                      metric.key.startsWith("totalSum_"))
-                      ? "#0ea5e9"
-                      : compareColors[
-                          ((isCompareMode || isCombinedMode) && total
-                            ? index - 1
-                            : index) % compareColors.length
-                        ],
-                }}
-              />
-              <span className="text-[10px] md:text-xs font-medium text-gray-700">
-                {metric.label}
-              </span>
-            </div>
-          ))}
+    const legendContent = (
+        <div className={`flex flex-row flex-wrap gap-y-1 ${legendPortal ? "justify-center gap-1 md:gap-2" : "justify-end space-x-1 md:space-x-2"}`}>
+          {legendItems.map((metric, index) => {
+            const hidden = hiddenSeries.has(metric.key);
+            const swatch =
+              (isCompareMode || isCombinedMode) &&
+              index === 0 &&
+              total &&
+              (metric.key === "totalSum" ||
+                metric.key.startsWith("totalSum_"))
+                ? "#0ea5e9"
+                : compareColors[
+                    ((isCompareMode || isCombinedMode) && total
+                      ? index - 1
+                      : index) % compareColors.length
+                  ];
+            return (
+              <button
+                key={metric.key}
+                type="button"
+                onClick={() => toggleSeries(metric.key)}
+                title={hidden ? `Show ${metric.label}` : `Hide ${metric.label}`}
+                className="flex items-center space-x-1 md:space-x-2 cursor-pointer transition-opacity duration-150 hover:opacity-70"
+              >
+                {/* Hidden series keep their swatch outlined rather than filled,
+                    so the row still reads as "this series exists, it is off". */}
+                <div
+                  className="w-2 h-2 md:w-3 md:h-3 rounded-sm border"
+                  style={{
+                    backgroundColor: hidden ? "transparent" : swatch,
+                    borderColor: swatch,
+                  }}
+                />
+                <span
+                  className={`text-[10px] md:text-xs font-medium transition-colors duration-150 ${
+                    hidden ? "text-gray-400 line-through" : "text-gray-700"
+                  }`}
+                >
+                  {metric.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
+    );
+
+    return legendPortal ? (
+      createPortal(legendContent, legendPortal)
+    ) : (
+      <div className={`absolute ${topOffset} right-2 bg-transparent z-10`}>
+        {legendContent}
       </div>
     );
   };
 
   const renderCompareBars = () => {
     const barsToRender = [];
+    // Labels always render now (never hidden for lack of room) — sizing and,
+    // below ~13px, rotation is keyed on the ACTUAL computed bar width so text
+    // never collides with its neighbour instead of just disappearing.
+    const labelSizing = getLabelSizing(calculateBarSize());
 
     if (isCombinedMode && activeYear) {
       if (total) {
@@ -1166,19 +1215,19 @@ const VerticalBarView = ({
       barsToRender.push(...metrics);
     }
 
-    return barsToRender.map((metric, index) => (
+    // Index is kept from the unfiltered list so a series keeps its color when
+    // another one is toggled off.
+    return barsToRender
+      .map((metric, index) => ({ metric, index }))
+      .filter(({ metric }) => !hiddenSeries.has(metric.key))
+      .map(({ metric, index }) => (
       <Bar
         key={metric.key}
         dataKey={metric.key}
-        radius={[2, 2, 0, 0]}
+        radius={[0, 0, 0, 0]}
         animationDuration={0}
+        isAnimationActive={false}
         style={{ cursor: "pointer" }}
-        onMouseEnter={(data, index) => {
-          setHoveredBar(index);
-        }}
-        onMouseLeave={() => {
-          setHoveredBar(null);
-        }}
       >
         {processedChartData.map((entry, dataIndex) => (
           <Cell
@@ -1186,62 +1235,54 @@ const VerticalBarView = ({
             fill={getBarColor(dataIndex, index)}
             style={{
               cursor: "pointer",
-              transition: "fill 0.2s ease-in-out",
+              transition: "fill 0.28s cubic-bezier(0.4, 0, 0.2, 1)",
             }}
           />
         ))}
-        <LabelList
-          dataKey={metric.key}
-          position="top"
-          formatter={(value, entry, listIndex) => {
-            if (value <= 0) return "";
+        {(() => {
+          // Returns { main, sub } — main is always the formatted value; sub
+          // is the matching percentage text (or null when no percentage
+          // applies), rendered as its own line below main, matching the
+          // comparison chart's BarLabel (bold value / lighter % stacked
+          // underneath) instead of one "value %" string on one line.
+          const getLabelParts = (value) => {
+            // A month with no data for this metric arrives as undefined, not
+            // 0 — undefined <= 0 is false, not a guard, so it used to fall
+            // through into the formatting branches below and render literal
+            // "undefined"/"undefined%" text once the overflow bug (above)
+            // stopped hiding those off-canvas bars.
+            if (!Number.isFinite(value) || value <= 0) return null;
 
-            const formattedValue = formatLabel(value, decimal);
+            const formattedValue = labelSizing.compact
+              ? formatCompactLabel(value)
+              : formatLabel(value, decimal);
+            const pct = (p) => (decimal ? Math.round(p * 10) / 10 : Math.round(p));
 
             if (isCombinedMode && activeYear && barsToRender.length > 1) {
               if (metric.key.startsWith("totalSum_")) {
-                return `${formattedValue}`;
+                return { main: formattedValue, sub: null };
               }
-
               if (relative_percentage === "conventional_scale") {
                 const metricSum = metricSums[metric.key] || 0;
-                if (metricSum === 0) return formattedValue;
-
-                const percentage = (value / metricSum) * 100;
-                const displayPercentage = decimal
-                  ? Math.round(percentage * 10) / 10
-                  : Math.round(percentage);
-
-                return `${formattedValue} ${displayPercentage}%`;
+                if (metricSum === 0) return { main: formattedValue, sub: null };
+                return { main: formattedValue, sub: `${pct((value / metricSum) * 100)}%` };
               }
             }
 
-            if (
-              hasMultipleYears &&
-              stacked &&
-              barsToRender.length > 1 &&
-              !isCombinedMode
-            ) {
+            if (hasMultipleYears && stacked && barsToRender.length > 1 && !isCombinedMode) {
               if (metric.key.startsWith("totalSum_")) {
-                return `${formattedValue}`;
+                return { main: formattedValue, sub: null };
               }
-
               if (relative_percentage === "conventional_scale") {
                 const metricSum = metricSums[metric.key] || 0;
-                if (metricSum === 0) return formattedValue;
-
-                const percentage = (value / metricSum) * 100;
-                const displayPercentage = decimal
-                  ? Math.round(percentage * 10) / 10
-                  : Math.round(percentage);
-
-                return `${formattedValue} ${displayPercentage}%`;
+                if (metricSum === 0) return { main: formattedValue, sub: null };
+                return { main: formattedValue, sub: `${pct((value / metricSum) * 100)}%` };
               }
             }
 
             if (isCompareMode && barsToRender.length > 1) {
               if (metric.key === "totalSum") {
-                return `${formattedValue} (100%)`;
+                return { main: formattedValue, sub: "100%" };
               }
 
               if (relative_percentage === "relative") {
@@ -1249,78 +1290,108 @@ const VerticalBarView = ({
                   const itemValue = item[metric.key];
                   return Math.abs(itemValue - value) < 0.01;
                 });
-
                 if (matchingItem) {
-                  const allMetricValues = metrics.map(
-                    (m) => matchingItem[m.key] || 0,
-                  );
+                  const allMetricValues = metrics.map((m) => matchingItem[m.key] || 0);
                   const maxValueInItem = Math.max(...allMetricValues, 0);
-                  const percentage =
-                    maxValueInItem > 0 ? (value / maxValueInItem) * 100 : 0;
-
-                  if (percentage > 0) {
-                    const displayPercentage = decimal
-                      ? Math.round(percentage * 10) / 10
-                      : Math.round(percentage);
-                    return `${formattedValue} ${displayPercentage}%`;
-                  }
+                  const percentage = maxValueInItem > 0 ? (value / maxValueInItem) * 100 : 0;
+                  if (percentage > 0) return { main: formattedValue, sub: `${pct(percentage)}%` };
                 }
               } else if (relative_percentage === "group_total") {
                 const matchingItem = processedChartData.find((item) => {
                   const itemValue = item[metric.key];
                   return Math.abs(itemValue - value) < 0.01;
                 });
-
                 if (matchingItem && matchingItem.groupTotal > 0) {
-                  const percentage = (value / matchingItem.groupTotal) * 100;
-                  const displayPercentage = decimal
-                    ? Math.round(percentage * 10) / 10
-                    : Math.round(percentage);
-                  return `${formattedValue} ${displayPercentage}%`;
+                  return { main: formattedValue, sub: `${pct((value / matchingItem.groupTotal) * 100)}%` };
                 }
               } else if (relative_percentage === "conventional_scale") {
                 const metricSum = metricSums[metric.key] || 0;
-                if (metricSum === 0) return formattedValue;
-
-                const percentage = (value / metricSum) * 100;
-                const displayPercentage = decimal
-                  ? Math.round(percentage * 10) / 10
-                  : Math.round(percentage);
-
-                return `${formattedValue} ${displayPercentage}%`;
+                if (metricSum === 0) return { main: formattedValue, sub: null };
+                return { main: formattedValue, sub: `${pct((value / metricSum) * 100)}%` };
               } else if (relative_percentage === "external") {
                 const matchingItem = processedChartData.find((item) => {
                   const itemValue = item[metric.key];
                   return Math.abs(itemValue - value) < 0.01;
                 });
-
                 if (matchingItem && matchingItem.externalReferenceValue > 0) {
-                  const percentage =
-                    (value / matchingItem.externalReferenceValue) * 100;
-                  const displayPercentage = decimal
-                    ? Math.round(percentage * 10) / 10
-                    : Math.round(percentage);
-                  return `${formattedValue} ${displayPercentage}%`;
+                  return {
+                    main: formattedValue,
+                    sub: `${pct((value / matchingItem.externalReferenceValue) * 100)}%`,
+                  };
                 }
               }
             }
 
-            return formattedValue;
-          }}
-          style={{
-            fontSize: getLabelFontSize(),
-            fill: "#374151",
-            fontWeight: "600",
-            fontFamily: MONO,
-            backgroundColor: "rgba(248, 250, 252, 0.92)",
-            padding: "4px 6px",
-            borderRadius: "3px",
-            lineHeight: "1.2",
-            textAlign: "center",
-          }}
-          offset={2}
-          dx={2}
-        />
+            return { main: formattedValue, sub: null };
+          };
+
+          // Recharts' default LabelList renderer can't rotate text, and below
+          // ~13px bars there's no horizontal room for even the smallest
+          // reasonable font — a custom `content` renderer is required (not
+          // optional) to keep labels always visible instead of colliding or
+          // getting clipped.
+          return (
+            <LabelList
+              dataKey={metric.key}
+              isAnimationActive={false}
+              content={(labelProps) => {
+                const { x, y, width, value } = labelProps;
+                const parts = getLabelParts(value);
+                if (!parts) return null;
+                const cx = x + width / 2;
+                const mainStyle = {
+                  fontSize: labelSizing.fontSize,
+                  fill: "var(--chart-tick-strong)",
+                  fontWeight: 700,
+                  fontFamily: MONO,
+                  letterSpacing: "-0.02em",
+                };
+                const subStyle = {
+                  fontSize: Math.max(labelSizing.fontSize - 2, 6),
+                  fill: "var(--chart-tick-dim)",
+                  fontWeight: 600,
+                  fontFamily: MONO,
+                };
+
+                if (labelSizing.rotate) {
+                  // Too little width to stack two lines legibly — one
+                  // combined line, same as the always-show guarantee below.
+                  const text = parts.sub ? `${parts.main} ${parts.sub}` : parts.main;
+                  const labelY = y - 6;
+                  return (
+                    <text
+                      x={cx}
+                      y={labelY}
+                      textAnchor="start"
+                      transform={`rotate(-90 ${cx} ${labelY})`}
+                      style={mainStyle}
+                    >
+                      {text}
+                    </text>
+                  );
+                }
+
+                // Two stacked lines — bold value on top, lighter percentage
+                // directly below it, closer to the bar cap. Same layout for
+                // every bar (no alternating/staggered heights).
+                const subY = y - 5;
+                const mainY = parts.sub ? subY - (labelSizing.fontSize + 2) : y - 6;
+                return (
+                  <>
+                    <text x={cx} y={mainY} textAnchor="middle" style={mainStyle}>
+                      {parts.main}
+                    </text>
+                    {parts.sub && (
+                      <text x={cx} y={subY} textAnchor="middle" style={subStyle}>
+                        {parts.sub}
+                      </text>
+                    )}
+                  </>
+                );
+              }}
+            />
+          );
+        })()}
       </Bar>
     ));
   };
@@ -1382,19 +1453,19 @@ const VerticalBarView = ({
       barsToRender.push(...metrics);
     }
 
-    return barsToRender.map((metric, index) => (
+    // Index is kept from the unfiltered list so a series keeps its color when
+    // another one is toggled off.
+    return barsToRender
+      .map((metric, index) => ({ metric, index }))
+      .filter(({ metric }) => !hiddenSeries.has(metric.key))
+      .map(({ metric, index }) => (
       <Bar
         key={metric.key}
         dataKey={metric.key}
-        radius={[0, 6, 6, 0]}
+        radius={[0, 0, 0, 0]}
         animationDuration={0}
+        isAnimationActive={false}
         style={{ cursor: "pointer" }}
-        onMouseEnter={(data, index) => {
-          setHoveredBar(index);
-        }}
-        onMouseLeave={() => {
-          setHoveredBar(null);
-        }}
       >
         {processedChartData.map((entry, dataIndex) => (
           <Cell
@@ -1402,15 +1473,21 @@ const VerticalBarView = ({
             fill={getBarColor(dataIndex, index)}
             style={{
               cursor: "pointer",
-              transition: "fill 0.2s ease-in-out",
+              transition: "fill 0.28s cubic-bezier(0.4, 0, 0.2, 1)",
             }}
           />
         ))}
         <LabelList
           dataKey={metric.key}
           position="right"
+          isAnimationActive={false}
           formatter={(value, entry, listIndex) => {
-            if (value <= 0) return "";
+            // A month with no data for this metric arrives as undefined, not
+            // 0 — undefined <= 0 is false, not a guard, so it used to fall
+            // through into the formatting branches below and render literal
+            // "undefined"/"undefined%" text once the overflow bug (above)
+            // stopped hiding those off-canvas bars.
+            if (!Number.isFinite(value) || value <= 0) return "";
 
             const formattedValue = formatLabel(value, decimal);
 
@@ -1525,7 +1602,7 @@ const VerticalBarView = ({
           }}
           style={{
             fontSize: "9px",
-            fill: "#1e293b",
+            fill: "var(--chart-tick-strong)",
             fontWeight: "700",
             fontFamily: MONO,
           }}
@@ -1538,15 +1615,10 @@ const VerticalBarView = ({
   const renderRegularBar = () => (
     <Bar
       dataKey="displayValue"
-      radius={[2, 2, 0, 0]}
+      radius={[0, 0, 0, 0]}
       animationDuration={0}
+        isAnimationActive={false}
       style={{ cursor: "pointer" }}
-      onMouseEnter={(data, index) => {
-        setHoveredBar(index);
-      }}
-      onMouseLeave={() => {
-        setHoveredBar(null);
-      }}
     >
       {finalChartData.map((entry, index) => (
         <Cell
@@ -1554,13 +1626,15 @@ const VerticalBarView = ({
           fill={getBarColor(index)}
           style={{
             cursor: "pointer",
-            transition: "fill 0.2s ease-in-out",
+            transition: "fill 0.28s cubic-bezier(0.4, 0, 0.2, 1)",
           }}
         />
       ))}
       <LabelList
         dataKey="displayValue"
         position="top"
+        offset={9}
+        isAnimationActive={false}
         formatter={(value) => {
           if (
             !isMonthly &&
@@ -1572,22 +1646,20 @@ const VerticalBarView = ({
 
           return formatLabel(value, decimal);
         }}
+        textAnchor="middle"
         style={{
           fontSize: getLabelFontSize(),
-          fill: "#1e293b",
+          fill: "var(--chart-tick-strong)",
           fontWeight: "700",
           fontFamily: MONO,
+          letterSpacing: "-0.02em",
         }}
-        offset={8}
       />
       <LabelList
         dataKey="displayPercentage"
         position="insideTop"
-        formatter={(value, entry, index) => {
-          const isHovered = hoveredBar === index;
-          const threshold = isHovered ? 2.5 : 3;
-          return value >= 1 ? `${decimal ? value : Math.round(value)}%` : "";
-        }}
+        isAnimationActive={false}
+        formatter={(value) => (value >= 1 ? `${decimal ? value : Math.round(value)}%` : "")}
         style={{
           fontSize: getLabelFontSize(),
           fill: "#ffffff",
@@ -1602,15 +1674,10 @@ const VerticalBarView = ({
   const renderRegularBarHorizontal = () => (
     <Bar
       dataKey="displayValue"
-      radius={[0, 6, 6, 0]}
+      radius={[0, 0, 0, 0]}
       animationDuration={0}
+        isAnimationActive={false}
       style={{ cursor: "pointer" }}
-      onMouseEnter={(data, index) => {
-        setHoveredBar(index);
-      }}
-      onMouseLeave={() => {
-        setHoveredBar(null);
-      }}
     >
       {finalChartData.map((entry, index) => (
         <Cell
@@ -1618,17 +1685,18 @@ const VerticalBarView = ({
           fill={getBarColor(index)}
           style={{
             cursor: "pointer",
-            transition: "fill 0.2s ease-in-out",
+            transition: "fill 0.28s cubic-bezier(0.4, 0, 0.2, 1)",
           }}
         />
       ))}
       <LabelList
         dataKey="displayValue"
         position="right"
+        isAnimationActive={false}
         formatter={(value) => formatLabel(value, decimal)}
         style={{
           fontSize: LABEL_FONT_SIZE,
-          fill: "#1e293b",
+          fill: "var(--chart-tick-strong)",
           fontWeight: "700",
           fontFamily: MONO,
         }}
@@ -1637,6 +1705,7 @@ const VerticalBarView = ({
       <LabelList
         dataKey="displayPercentage"
         position="insideLeft"
+        isAnimationActive={false}
         formatter={(value, entry, index) => {
           const isHovered = hoveredBar === index;
           const threshold = isHovered ? 2.5 : 3;
@@ -1655,133 +1724,151 @@ const VerticalBarView = ({
     </Bar>
   );
 
-  const getTooltipValue = () => {
-    if (!hoveredData) return "";
+  // One color swatch per row, matching the same series color the bar itself
+  // renders in (see getBarColor) — "Total" rows get the same fixed blue that
+  // getBarColor gives the total bar; every other row's color is keyed on its
+  // position within `metrics`, exactly like the legend's swatch lookup.
+  const TOTAL_SWATCH_COLOR = "#0ea5e9";
+
+  const getTooltipRows = () => {
+    if (!hoveredData) return [];
 
     if (isCombinedMode && activeYear) {
-      let tooltipContent = [];
+      const rows = [];
 
       if (total && hoveredData[`totalSum_${activeYear}`] !== undefined) {
-        tooltipContent.push(
-          `Total: ${formatLabel(
-            hoveredData[`totalSum_${activeYear}`],
-            decimal,
-          )}`,
-        );
+        rows.push({
+          label: "Total",
+          text: formatLabel(hoveredData[`totalSum_${activeYear}`], decimal),
+          color: TOTAL_SWATCH_COLOR,
+        });
       }
 
-      metrics.forEach((metric) => {
+      metrics.forEach((metric, i) => {
         const value = hoveredData[`${metric.key}_${activeYear}`] || 0;
         if (value > 0) {
-          tooltipContent.push(
-            `${metric.label}: ${formatLabel(value, decimal)}`,
-          );
+          rows.push({
+            label: metric.label,
+            text: formatLabel(value, decimal),
+            color: compareColors[i % compareColors.length],
+          });
         }
       });
 
-      return tooltipContent.join("\n");
+      return rows;
     }
 
     if (hasMultipleYears && !isCombinedMode) {
-      let tooltipContent = [];
+      const rows = [];
 
       if (stacked && metrics.length > 1) {
         detectedYears.forEach((year) => {
           if (total && hoveredData[`totalSum_${year}`] !== undefined) {
-            tooltipContent.push(
-              `Total ${year}: ${formatLabel(
-                hoveredData[`totalSum_${year}`],
-                decimal,
-              )}`,
-            );
+            rows.push({
+              label: `Total ${year}`,
+              text: formatLabel(hoveredData[`totalSum_${year}`], decimal),
+              color: TOTAL_SWATCH_COLOR,
+            });
           }
 
-          metrics.forEach((metric) => {
+          metrics.forEach((metric, i) => {
             const value = hoveredData[`${metric.key}_${year}`] || 0;
             if (value > 0) {
-              tooltipContent.push(
-                `${metric.label} ${year}: ${formatLabel(value, decimal)}`,
-              );
+              rows.push({
+                label: `${metric.label} ${year}`,
+                text: formatLabel(value, decimal),
+                color: compareColors[i % compareColors.length],
+              });
             }
           });
         });
       } else {
-        detectedYears.forEach((year) => {
+        detectedYears.forEach((year, i) => {
           const value = hoveredData[`value_${year}`] || 0;
           if (value > 0) {
-            tooltipContent.push(`${year}: ${formatLabel(value, decimal)}`);
+            rows.push({
+              label: String(year),
+              text: formatLabel(value, decimal),
+              color: compareColors[i % compareColors.length],
+            });
           }
         });
       }
 
-      return tooltipContent.join("\n");
+      return rows;
     }
 
     if (isCompareMode) {
-      let tooltipContent = [];
+      const rows = [];
 
       if (total && hoveredData.totalSum !== undefined) {
-        tooltipContent.push(
-          `Total: ${formatLabel(hoveredData.totalSum, decimal)}`,
-        );
+        rows.push({
+          label: "Total",
+          text: formatLabel(hoveredData.totalSum, decimal),
+          color: TOTAL_SWATCH_COLOR,
+        });
       }
 
-      const metricValues = metrics
-        .map((metric) => {
-          const value = hoveredData[metric.key] || 0;
-          if (value === 0) return null;
+      metrics.forEach((metric, i) => {
+        const value = hoveredData[metric.key] || 0;
+        if (value === 0) return;
 
-          let percentageText = "";
-          if (relative_percentage === "relative") {
-            const percentage =
-              hoveredData.relativePercentages?.[metric.key] || 0;
-            const displayPercentage = decimal
-              ? Math.round(percentage * 10) / 10
-              : Math.round(percentage);
-            percentageText = ` (${displayPercentage}%)`;
-          } else if (relative_percentage === "group_total") {
-            const percentage = hoveredData.groupPercentages?.[metric.key] || 0;
-            const displayPercentage = decimal
-              ? Math.round(percentage * 10) / 10
-              : Math.round(percentage);
-            percentageText = ` (${displayPercentage}%)`;
-          } else if (relative_percentage === "conventional_scale") {
-            const metricSum = metricSums[metric.key] || 0;
-            if (metricSum > 0) {
-              const percentage = (value / metricSum) * 100;
-              const displayPercentage = decimal
-                ? Math.round(percentage * 10) / 10
-                : Math.round(percentage);
-              percentageText = ` (${displayPercentage}%)`;
-            }
-          } else if (relative_percentage === "external") {
-            const percentage =
-              hoveredData.externalPercentages?.[metric.key] || 0;
+        let percentageText = "";
+        if (relative_percentage === "relative") {
+          const percentage =
+            hoveredData.relativePercentages?.[metric.key] || 0;
+          const displayPercentage = decimal
+            ? Math.round(percentage * 10) / 10
+            : Math.round(percentage);
+          percentageText = ` (${displayPercentage}%)`;
+        } else if (relative_percentage === "group_total") {
+          const percentage = hoveredData.groupPercentages?.[metric.key] || 0;
+          const displayPercentage = decimal
+            ? Math.round(percentage * 10) / 10
+            : Math.round(percentage);
+          percentageText = ` (${displayPercentage}%)`;
+        } else if (relative_percentage === "conventional_scale") {
+          const metricSum = metricSums[metric.key] || 0;
+          if (metricSum > 0) {
+            const percentage = (value / metricSum) * 100;
             const displayPercentage = decimal
               ? Math.round(percentage * 10) / 10
               : Math.round(percentage);
             percentageText = ` (${displayPercentage}%)`;
           }
+        } else if (relative_percentage === "external") {
+          const percentage =
+            hoveredData.externalPercentages?.[metric.key] || 0;
+          const displayPercentage = decimal
+            ? Math.round(percentage * 10) / 10
+            : Math.round(percentage);
+          percentageText = ` (${displayPercentage}%)`;
+        }
 
-          return `${metric.label}: ${formatLabel(
-            value,
-            decimal,
-          )}${percentageText}`;
-        })
-        .filter(Boolean);
+        rows.push({
+          label: metric.label,
+          text: `${formatLabel(value, decimal)}${percentageText}`,
+          color: compareColors[i % compareColors.length],
+        });
+      });
 
-      tooltipContent.push(...metricValues);
-      return tooltipContent.join("\n");
+      return rows;
     }
 
-    return formatLabel(hoveredData.displayValue, decimal);
+    return [
+      {
+        label: null,
+        text: formatLabel(hoveredData.displayValue, decimal),
+        color: barColor,
+      },
+    ];
   };
 
   const hoveredData =
     hoveredBar !== null ? processedChartData[hoveredBar] : null;
 
   return (
-    <div className="w-full h-full backdrop-blur-sm relative">
+    <div ref={plotRef} className="w-full h-full backdrop-blur-sm relative">
       {renderYearToggle()}
       {renderLegend()}
       {isInverse ? (
@@ -1792,7 +1879,12 @@ const VerticalBarView = ({
               : ""
           } bg-white rounded-md`}
           style={{
-            height: inverseHeight,
+            // Fixed pixel height only makes sense when the list needs an
+            // internal scroll viewport; otherwise it should fill whatever
+            // height the bento tile actually gives it (100%), not a value
+            // computed from item count alone — that value was frequently
+            // shorter than the tile, leaving dead space below the chart.
+            height: shouldScrollVertical ? inverseHeight : "100%",
             maxHeight: shouldScrollVertical
               ? `${INVERSE_MAX_HEIGHT}px`
               : "none",
@@ -1832,23 +1924,27 @@ const VerticalBarView = ({
                 </defs>
 
                 <CartesianGrid
-                  strokeDasharray="2 4"
+                  {...AXIS_GRID_PROPS}
                   horizontal={false}
-                  stroke="rgba(148,163,184,0.4)"
                   strokeWidth={1}
+                />
+
+                {/* Content-less: HoverTooltip (below) already renders the
+                    readout from `hoveredBar` state. This exists purely so
+                    Recharts draws its native cursor rect behind the hovered
+                    category — the "shaded ground" ComparisonChart gets for
+                    free by using Tooltip natively, which a manual
+                    mousemove-tracked overlay doesn't get on its own. */}
+                <RechartsTooltip
+                  content={() => null}
+                  cursor={{ fill: "var(--chart-hover-cursor)" }}
                 />
 
                 <XAxis
                   type="number"
-                  axisLine={true}
-                  tickLine={true}
-                  tick={{
-                    fontSize: 9,
-                    fill: "#475569",
-                    fontWeight: "600",
-                    fontFamily: MONO,
-                  }}
-                  domain={[0, isSpecialMode ? compareMaxValue : "dataMax"]}
+                  {...AXIS_LINE_PROPS}
+                  tick={AXIS_VALUE_TICK}
+                  domain={[0, isSpecialMode ? compareMaxValue : maxValue]}
                   tickFormatter={(value) => {
                     if (
                       !isMonthly &&
@@ -1857,7 +1953,7 @@ const VerticalBarView = ({
                     ) {
                       return "";
                     }
-                    return value;
+                    return formatAxisValue(value);
                   }}
                   allowDecimals={decimal}
                 />
@@ -1865,18 +1961,18 @@ const VerticalBarView = ({
                 <YAxis
                   type="category"
                   dataKey="name"
-                  axisLine={true}
-                  tickLine={true}
+                  {...AXIS_LINE_PROPS}
                   tick={{
-                    fontSize: 9,
+                    ...AXIS_CATEGORY_TICK,
                     textAnchor: "end",
-                    width: 90,
-                    fill: "#1e293b",
-                    fontWeight: "700",
-                    fontFamily: SANS,
+                    // Was 90 — sized for much longer labels than the 3-4
+                    // letter station/route codes actually shown here, which
+                    // left most of that width as blank space in front of the
+                    // (right-aligned) text.
+                    width: 45,
                   }}
                   interval={0}
-                  width={90}
+                  width={45}
                 />
 
                 {isSpecialMode
@@ -1908,25 +2004,37 @@ const VerticalBarView = ({
                 barSize={calculateBarSize()}
                 barCategoryGap={getBarCategoryGap()}
                 barGap={getBarGap()}
+                onMouseMove={handleChartMouseMove}
+                onMouseLeave={handleChartMouseLeave}
               >
+                {/* Shared axis/grid treatment (lib/charts/theme.js) — same
+                    dashed rules, no spines or tick marks, same tick styling
+                    every Recharts chart in the app uses. */}
                 <CartesianGrid
-                  strokeDasharray="2 4"
+                  {...AXIS_GRID_PROPS}
                   vertical={false}
-                  stroke="rgba(148,163,184,0.4)"
                   strokeWidth={1}
+                />
+
+                {/* Content-less: HoverTooltip (below) already renders the
+                    readout from `hoveredBar` state. This exists purely so
+                    Recharts draws its native cursor rect behind the hovered
+                    category — the "shaded ground" ComparisonChart gets for
+                    free by using Tooltip natively, which a manual
+                    mousemove-tracked overlay doesn't get on its own. */}
+                <RechartsTooltip
+                  content={() => null}
+                  cursor={{ fill: "var(--chart-hover-cursor)" }}
                 />
 
                 <XAxis
                   dataKey="name"
-                  axisLine={true}
-                  tickLine={true}
+                  {...AXIS_LINE_PROPS}
                   tick={{
+                    ...AXIS_CATEGORY_TICK,
                     fontSize: shouldScrollHorizontal
                       ? AXIS_FONT_SIZE_SCROLL
                       : AXIS_FONT_SIZE,
-                    fill: "#1e293b",
-                    fontWeight: "900",
-                    fontFamily: SANS,
                     angle: 0,
                     textAnchor: "middle",
                   }}
@@ -1935,14 +2043,13 @@ const VerticalBarView = ({
                 />
 
                 <YAxis
-                  axisLine={true}
-                  tickLine={true}
-                  tick={{
-                    fontSize: 10,
-                    fill: "#475569",
-                    fontWeight: "600",
-                    fontFamily: MONO,
-                  }}
+                  {...AXIS_LINE_PROPS}
+                  // Recharts reserves 60px by default; formatted ticks here are
+                  // at most ~4 glyphs ("8M", "250K"), so the rest was dead
+                  // gutter between the card edge and the plot.
+                  width={34}
+                  tick={AXIS_VALUE_TICK}
+                  tickMargin={4}
                   tickFormatter={(value) => {
                     if (value >= 1000000) {
                       return `${Math.round(value / 1000000)}M`;
@@ -1969,7 +2076,7 @@ const VerticalBarView = ({
         isVisible={hoveredBar !== null}
         position="top-right"
         name={hoveredData?.originalName || hoveredData?.name}
-        value={getTooltipValue()}
+        rows={getTooltipRows()}
         percentage={isSpecialMode ? null : hoveredData?.displayPercentage}
         subtitle={
           isSpecialMode
@@ -1978,7 +2085,6 @@ const VerticalBarView = ({
               : "Comparison metrics"
             : "Interactive data view"
         }
-        multiline={isSpecialMode}
       />
     </div>
   );
