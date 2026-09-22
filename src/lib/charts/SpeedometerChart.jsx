@@ -25,6 +25,9 @@ const DEFAULT_PERIODS = [
 const SpeedometerChart = memo(
   ({
     title = "Throughput",
+    subtitle,
+    icon,
+    iconColor,
     theme,
     controls,
     onControl,
@@ -74,12 +77,17 @@ const SpeedometerChart = memo(
       <ChartCard
         theme={t}
         title={title}
+        subtitle={subtitle}
+        icon={icon}
+        iconColor={iconColor}
         controls={value != null ? controls : builtControls}
         onControl={onControl}
         width={width}
         size={size}
         expandable={expandable}
         className={className}
+        floatingHeader
+        headline={{ value: `${current}${unit}` }}
       >
         {({ detailed }) => (
           <div style={{ position: "relative" }}>
@@ -123,11 +131,7 @@ const SpeedometerChart = memo(
               <circle cx={CX} cy={CY} r="9" fill={t.text.primary} />
 
               {/* center value */}
-              <text x={CX} y={CY - 28} textAnchor="middle" fontSize="38" fontWeight="800" fill={t.text.primary}>
-                {current}
-                <tspan fontSize="18">{unit}</tspan>
-              </text>
-              <text x={CX} y={CY - 10} textAnchor="middle" fontSize="12" fontWeight="500" fill={t.text.muted}>{label}</text>
+              <text x={CX} y={CY - 20} textAnchor="middle" fontSize="13" fontWeight="700" fill={t.text.muted}>{label}</text>
 
               {/* detailed mode: min/max tick labels under the arc ends */}
               {detailed && (

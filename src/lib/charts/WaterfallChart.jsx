@@ -1,6 +1,7 @@
 import React, { useMemo, useState, memo } from "react";
-import { resolveTheme } from "./theme";
+import { resolveTheme, AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_GRID_PROPS } from "./theme";
 import { ChartCard, Legend, ChartTooltip } from "./chrome";
+import { compactNumber } from "./format";
 
 /**
  * WaterfallChart — running total with increases/decreases and a final bar.
@@ -27,6 +28,9 @@ const TYPE_META = [
 const WaterfallChart = memo(
   ({
     title = "Cash Flow",
+    subtitle,
+    icon,
+    iconColor,
     theme,
     controls,
     onControl,
@@ -45,7 +49,7 @@ const WaterfallChart = memo(
     className = "",
   }) => {
     const t = resolveTheme(theme, "dark");
-    const fmt = formatValue || ((v) => Number(v || 0).toLocaleString("en-US"));
+    const fmt = formatValue || compactNumber;
 
     // which bar types are visible (toggled by legend / filter)
     const [active, setActive] = useState({ inc: true, dec: true, total: true });
@@ -112,8 +116,8 @@ const WaterfallChart = memo(
               const maxV = Math.max(...bars.flatMap((s) => [s.start, s.end]), 1);
               return (
                 <g key={f}>
-                  <line x1={PL} y1={gy} x2={W - PR} y2={gy} stroke={t.grid} strokeWidth="1" strokeDasharray="2 4" opacity="0.6" />
-                  <text x={PL - 4} y={gy + 4} textAnchor="end" fontSize="10" fill={t.text.muted}>{fmt(Math.round(maxV * f))}</text>
+                  <line x1={PL} y1={gy} x2={W - PR} y2={gy} stroke={t.grid} strokeWidth="1" strokeDasharray={AXIS_GRID_PROPS.strokeDasharray} />
+                  <text x={PL - 4} y={gy + 4} textAnchor="end" {...AXIS_VALUE_TICK} fill={t.text.muted}>{fmt(Math.round(maxV * f))}</text>
                 </g>
               );
             })}
@@ -149,7 +153,7 @@ const WaterfallChart = memo(
                     Σ {fmt(b.running)}
                   </text>
                 )}
-                <text x={b.cx} y={BASE + 20} textAnchor="middle" fontSize="12" fontWeight="500" fill={t.text.muted}>{b.label}</text>
+                <text x={b.cx} y={BASE + 20} textAnchor="middle" {...AXIS_CATEGORY_TICK} fill={t.text.secondary}>{b.label}</text>
                 {/* hover hit-area spanning the full column height */}
                 {on && (
                   <rect
@@ -222,11 +226,16 @@ const WaterfallChart = memo(
       <ChartCard
         theme={t}
         title={title}
+        subtitle={subtitle}
+        icon={icon}
+        iconColor={iconColor}
         controls={mergedControls}
         onControl={onControl}
         width={width}
         size={size}
         className={className}
+        floatingHeader
+        headline={{ value: fmt(bars.at(-1)?.running || 0) }}
         footer={<Legend theme={t} items={legendItems} swatch="dot" onToggle={toggle} />}
       >
         {renderBody}

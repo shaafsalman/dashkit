@@ -57,8 +57,8 @@ export function WeekdayBars({ theme, title = "Weekly Flight Volume", icon, iconC
       }}
     >
       {() => (
-        <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", paddingTop: 40 }}>
-          <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end", gap: 6 }}>
+        <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", paddingTop: 28 }}>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end", gap: "clamp(10px, 2.2vw, 30px)", padding: "0 clamp(8px, 2.4vw, 28px)" }}>
             {data.buckets.map((b, i) => {
               const frac = b.total / data.max;
               const lit = hover === i;
@@ -69,29 +69,31 @@ export function WeekdayBars({ theme, title = "Weekly Flight Volume", icon, iconC
                   onMouseLeave={() => setHover(null)}
                   style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", height: "100%" }}
                 >
-                  {/* full-height track with the bar filling from the bottom */}
-                  <div style={{ flex: 1, minHeight: 0, width: "100%", background: t.grid, display: "flex", alignItems: "flex-end", position: "relative" }}>
+                  <div style={{ flex: 1, minHeight: 0, width: "min(100%, 58px)", background: t.grid, display: "flex", alignItems: "flex-end", position: "relative", borderRadius: 8, overflow: "hidden" }}>
                     <div
                       style={{
                         width: "100%",
                         height: `${Math.max(3, frac * 100)}%`,
-                        background: accent,
+                        background: i === busiest ? accent : `${accent}B8`,
                         opacity: lit ? 1 : i === busiest ? 0.95 : 0.72,
-                        transition: "opacity .15s",
+                        borderRadius: "7px 7px 0 0",
+                        transition: "opacity .15s, transform .15s",
+                        transform: lit ? "scaleX(1.04)" : "none",
                       }}
                     />
                     <span
                       style={{
-                        ...MONO, position: "absolute", top: 2, left: 0, right: 0, textAlign: "center",
-                        fontSize: 12, fontWeight: lit ? 700 : 600, color: "#fff",
-                        textShadow: "0 1px 2px rgba(0,0,0,0.55), 0 0 4px rgba(0,0,0,0.35)",
+                        ...MONO, position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", textAlign: "center",
+                        fontSize: 11.5, fontWeight: 700, color: t.text.primary,
+                        background: t.surface, border: `1px solid ${t.control.border}`, borderRadius: 999,
+                        padding: "2px 6px", lineHeight: 1.2, whiteSpace: "nowrap",
                       }}
                     >
                       {compact(b.total)}
                     </span>
                   </div>
-                  <span style={{ ...MONO, fontSize: 12, marginTop: 5, color: lit || i === busiest ? t.text.primary : t.text.muted, fontWeight: lit || i === busiest ? 700 : 400 }}>
-                    {DOW[i][0]}
+                  <span style={{ ...MONO, fontSize: 11.5, marginTop: 8, color: lit || i === busiest ? t.text.primary : t.text.muted, fontWeight: lit || i === busiest ? 700 : 500 }}>
+                    {DOW[i]}
                   </span>
                 </div>
               );

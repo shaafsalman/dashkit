@@ -9,6 +9,7 @@ import { ChartCard } from "./chrome";
 const HeatmapGrid = memo(
   ({
     title = "Activity",
+    subtitle,
     theme,
     controls,
     onControl,
@@ -18,6 +19,7 @@ const HeatmapGrid = memo(
     max,
     accent,
     width = 560,
+    size = "m",
     className = "",
   }) => {
     const t = resolveTheme(theme, "dark");
@@ -36,10 +38,14 @@ const HeatmapGrid = memo(
       <ChartCard
         theme={t}
         title={title}
+        subtitle={subtitle}
         controls={controls}
         onControl={onControl}
         width={width}
+        size={size}
         className={className}
+        floatingHeader
+        headline={{ value: `${Math.round((cells.reduce((sum, value) => sum + value, 0) / Math.max(cells.length, 1)) * 100)}%` }}
         footer={
           <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginTop: 14, fontSize: 12, color: t.text.muted }}>
             <span>Less</span>

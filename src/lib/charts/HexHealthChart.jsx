@@ -1,5 +1,5 @@
 import React, { useMemo, useState, memo } from "react";
-import { resolveTheme, lighten } from "./theme";
+import { resolveTheme, lighten, contrastingText } from "./theme";
 import { ChartCard, ChartTooltip, Legend } from "./chrome";
 
 /**
@@ -43,6 +43,7 @@ const P = (r, d) => [CX + r * Math.cos(rad(d)), CY - r * Math.sin(rad(d))];
 const HexHealthChart = memo(
   ({
     title = "Account Health",
+    subtitle,
     icon,
     iconColor,
     theme,
@@ -65,12 +66,11 @@ const HexHealthChart = memo(
     // theme-aware center + label colors. Dark theme -> dark center (light text);
     // light theme -> light center (dark text), so the hub never clashes.
     const isLight = t.mode === "light";
-    const hubFill = isLight ? "#ffffff" : "#0b0f18";
-    const hubStroke = isLight ? "rgba(15,23,42,0.12)" : "#1c2433";
-    const hubValueFill = t.text.primary;
-    const hubLabelFill = t.text.muted;
-    // petal labels sit on saturated petals: white reads on both themes.
-    const petalLabelFill = "#ffffff";
+    const onBrand = String(t.text.primary).toLowerCase() === "#ffffff";
+    const hubFill = onBrand ? (t.series?.at(-1) || "#334155") : isLight ? "#ffffff" : "#0b0f18";
+    const hubStroke = onBrand ? "rgba(255,255,255,0.5)" : isLight ? "rgba(15,23,42,0.12)" : "#1c2433";
+    const hubValueFill = onBrand ? "#ffffff" : t.text.primary;
+    const hubLabelFill = onBrand ? "#cbd5e1" : t.text.muted;
 
     const ordered = useMemo(() => {
       const arr = metrics.slice(0, 5);
@@ -84,7 +84,7 @@ const HexHealthChart = memo(
       () =>
         ordered.map((m, i) => {
           const phi = SLOTS[i];
-          const color = m.color || PALETTE[i % PALETTE.length];
+          const color = m.color || (onBrand ? t.series[i % t.series.length] : PALETTE[i % PALETTE.length]);
           const len = BASE_LEN * (0.62 + 0.38 * (Math.min(m.value, 100) / 100));
           const a0 = phi - 30 + GAP_DEG;
           const a1 = phi + 30 - GAP_DEG;
@@ -101,7 +101,7 @@ const HexHealthChart = memo(
             key: m.label || i,
           };
         }),
-      [ordered]
+      [ordered, onBrand, t.series]
     );
 
     const hexPts = useMemo(
@@ -143,6 +143,7 @@ const HexHealthChart = memo(
             {petals.map((p) => {
               const hidden = off[p.key];
               const dim = hover != null && hover !== p.key;
+              const petalLabelFill = contrastingText(p.color);
               return (
                 <g
                   key={p.key}
@@ -291,6 +292,7 @@ const HexHealthChart = memo(
       <ChartCard
         theme={t}
         title={title}
+        subtitle={subtitle}
         icon={icon}
         iconColor={iconColor}
         controls={chartControls}
@@ -298,6 +300,8 @@ const HexHealthChart = memo(
         width={width}
         size={size}
         className={className}
+        floatingHeader
+        headline={{ value: `${overall}${suffix}` }}
         footer={legend}
       >
         {renderChart}

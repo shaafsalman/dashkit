@@ -1,5 +1,10 @@
 import { useState, useMemo } from "react";
-import { ChartCard, resolveTheme } from "../charts";
+import {
+  AXIS_GRID_PROPS,
+  AXIS_VALUE_TICK,
+  ChartCard,
+  resolveTheme,
+} from "../charts";
 import { useMeasuredBox, MORD, MONO, shortMonth, compact, Empty, spline } from "./_shared.jsx";
 
 /* ── TREND BARCODE ───────────────────────────────────────────────────────────
@@ -34,10 +39,18 @@ export function TrendBarcodeCard({
   // nothing is scaled and the marker dots stay circular.
   const W = Math.max(240, box.width);
   const H = Math.max(90, box.height);
+  const plotLeft = 40;
+  const plotRight = 6;
   const baseline = H - 4;
   const top = 18;
-  const xOf = (i) => (i * (W - 8)) / 11 + 4;
+  const plotWidth = Math.max(1, W - plotLeft - plotRight);
+  const xOf = (i) => plotLeft + (i * plotWidth) / 11;
   const yOf = (v) => baseline - ((v || 0) / data.max) * (baseline - top);
+  const yTicks = [1, 0.75, 0.5, 0.25, 0].map((fraction) => ({
+    fraction,
+    value: data.max * fraction,
+    y: top + (1 - fraction) * (baseline - top),
+  }));
 
   const pts = hasData
     ? data.series.map((d, i) => ({
@@ -93,6 +106,28 @@ export function TrendBarcodeCard({
               <Empty t={t} label="Not enough monthly data in range" />
             ) : (
               <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" style={{ display: "block" }} role="img" aria-label={title}>
+                {yTicks.map((tick) => (
+                  <g key={tick.fraction}>
+                    <line
+                      x1={plotLeft}
+                      y1={tick.y}
+                      x2={W - plotRight}
+                      y2={tick.y}
+                      stroke={t.grid}
+                      strokeDasharray={AXIS_GRID_PROPS.strokeDasharray}
+                    />
+                    <text
+                      x={plotLeft - 8}
+                      y={tick.y + 3}
+                      textAnchor="end"
+                      {...AXIS_VALUE_TICK}
+                      fill={t.text.muted}
+                    >
+                      {fmt(tick.value)}
+                    </text>
+                  </g>
+                ))}
+
                 {samples.map((s, i) => {
                   const st = stateOf(s.seg);
                   return (
@@ -127,7 +162,7 @@ export function TrendBarcodeCard({
                 {data.series.map((d, i) => (
                   <rect
                     key={d.label}
-                    x={xOf(i) - (W - 8) / 22} y="0" width={(W - 8) / 11} height={H}
+                    x={xOf(i) - plotWidth / 22} y="0" width={plotWidth / 11} height={H}
                     fill="transparent"
                     onMouseEnter={() => setHover(i)}
                     onMouseLeave={() => setHover(null)}

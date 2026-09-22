@@ -1,0 +1,23 @@
+{
+  "name": "dashkit",
+  "version": "0.1.0",
+  "description": "Agent-ready access to the Dashkit responsive chart and dashboard component system.",
+  "author": {
+    "name": "NOOA"
+  },
+  "interface": {
+    "displayName": "Dashkit by NOOA",
+    "shortDescription": "Build stable, responsive Dashkit charts with agents.",
+    "longDescription": "Browse Dashkit's reusable chart catalog, inspect component contracts, generate production-ready React examples, and validate theme, palette, sizing, and number-format rules through MCP.",
+    "developerName": "NOOA",
+    "category": "Developer Tools",
+    "capabilities": ["MCP tools", "React code generation", "Design validation"],
+    "defaultPrompt": [
+      "Build a responsive Dashkit analytics card.",
+      "Find the best Dashkit chart for this dataset.",
+      "Audit this Dashkit config for visual consistency."
+    ],
+    "brandColor": "#76B900"
+  },
+  "mcpServers": "./.mcp.json"
+}

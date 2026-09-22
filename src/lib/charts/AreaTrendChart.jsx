@@ -1,7 +1,8 @@
 import React, { useMemo, useState, memo } from "react";
-import { resolveTheme } from "./theme";
+import { resolveTheme, AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_GRID_PROPS } from "./theme";
 import { ChartCard, ChartTooltip, Stat } from "./chrome";
 import { useMeasuredBox } from "./useMeasuredBox";
+import { compactNumber } from "./format";
 
 /**
  * AreaTrendChart — single smooth gradient area with an emphasized endpoint dot.
@@ -39,7 +40,7 @@ const FIXED_PR = 8;
 // what kept them proportionate at 244px tall and huge at 900px tall.
 const MARGIN = { top: 28, right: 16, bottom: 34, left: 52 };
 
-const fmtDefault = (v) => Number(v || 0).toLocaleString("en-US");
+const fmtDefault = (v) => compactNumber(v);
 const smooth = (pts) => {
   if (pts.length < 2) return "";
   let d = `M ${pts[0][0]} ${pts[0][1]}`;
@@ -100,11 +101,9 @@ const AreaTrendChart = memo(
     // change what the observer reports, which would re-cap smaller next
     // render, cascading toward zero over a few frames.
     const [boxRef, box] = useMeasuredBox({ width: FIXED_W, height: FIXED_VBH });
-    // Plot area reads as "too tall" once a fill chart is stretched to fill
-    // its whole bento slot — cap it so there's always visible breathing
-    // room below the plot, regardless of how tall the slot is.
-    const PLOT_HEIGHT_RATIO = 0.6;
-    const plotHeight = isFill ? Math.max(120, Math.round(box.height * PLOT_HEIGHT_RATIO)) : FIXED_VBH;
+    // Match both measured dimensions in fill mode. A shorter viewBox painted
+    // into a full-height SVG with preserveAspectRatio="none" stretched text.
+    const plotHeight = isFill ? Math.max(120, Math.round(box.height)) : FIXED_VBH;
 
     // Fixed sizes keep the original designed viewBox; "fill" tracks the
     // real container so nothing ever gets letterboxed inside it.
@@ -273,7 +272,7 @@ const AreaTrendChart = memo(
                 viewBox={`0 0 ${W} ${VBH}`}
                 width="100%"
                 height={isFill ? "100%" : undefined}
-                preserveAspectRatio={isFill ? "none" : "xMidYMid meet"}
+                preserveAspectRatio="xMidYMid meet"
                 role="img"
                 aria-label={title}
               >
@@ -289,8 +288,8 @@ const AreaTrendChart = memo(
                   const val = vmin + f * span;
                   return (
                     <g key={`yt-${i}`}>
-                      <line x1={PL} y1={yv} x2={W - PR} y2={yv} stroke={t.grid} strokeDasharray="4 5" strokeWidth="1" />
-                      <text x={PL - 6} y={yv + 4} textAnchor="end" fontSize="11" fontWeight="500" fill={t.text.muted}>{fmt(val)}</text>
+                      <line x1={PL} y1={yv} x2={W - PR} y2={yv} stroke={t.grid} strokeDasharray={AXIS_GRID_PROPS.strokeDasharray} strokeWidth="1" />
+                      <text x={PL - 6} y={yv + 4} textAnchor="end" {...AXIS_VALUE_TICK} fill={t.text.muted}>{fmt(val)}</text>
                     </g>
                   );
                 })}
@@ -338,8 +337,8 @@ const AreaTrendChart = memo(
                       x={xAt(i)}
                       y={PB + 18}
                       textAnchor={i === 0 ? "start" : i === lbls.length - 1 ? "end" : "middle"}
-                      fontSize="12"
-                      fill={t.text.muted}
+                      {...AXIS_CATEGORY_TICK}
+                      fill={t.text.secondary}
                     >
                       {lb}
                     </text>

@@ -2,12 +2,13 @@ import React, { useMemo, memo, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { resolveTheme, AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_LINE_PROPS, AXIS_GRID_PROPS } from "./theme";
 import { ChartCard, Stat, SIZES } from "./chrome";
+import { compactCurrency } from "./format";
 import {
   ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from "recharts";
 
-const fmtMoneyDefault = (v) => `$${Number(v || 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+const fmtMoneyDefault = (v) => compactCurrency(v);
 
 const DEFAULTS = {
   labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],

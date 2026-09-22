@@ -12,6 +12,7 @@ export function RankedLocationBoard({
 }) {
   const t = resolveTheme(theme, "light");
   const accent = iconColor || t.accent;
+  const onBrand = String(t.text.primary).toLowerCase() === "#ffffff";
   const [hover, setHover] = useState(null);
 
   const data = useMemo(() => {
@@ -62,6 +63,7 @@ export function RankedLocationBoard({
           {data.rows.map((d, i) => {
             const share = data.total ? (d.value / data.total) * 100 : 0;
             const lit = hover === i;
+            const rowColor = onBrand ? (t.series[i % t.series.length] || "#cbd5e1") : accent;
             return (
               <div
                 key={d.code}
@@ -70,7 +72,7 @@ export function RankedLocationBoard({
                 style={{
                   display: "flex", alignItems: "center", gap: 11, padding: "10px 6px",
                   borderTop: i === 0 ? "none" : `1px solid ${t.control.border}`,
-                  background: lit ? (t.mode === "light" ? "#f8fafc" : "rgba(255,255,255,0.04)") : "transparent",
+                  background: lit ? (onBrand ? "rgba(255,255,255,.14)" : t.mode === "light" ? "#f8fafc" : "rgba(255,255,255,0.04)") : "transparent",
                   transition: "background .15s",
                 }}
               >
@@ -82,9 +84,9 @@ export function RankedLocationBoard({
                 <span
                   style={{
                     ...MONO, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em",
-                    color: i === 0 ? "#fff" : t.text.primary,
-                    background: i === 0 ? accent : "transparent",
-                    border: `1px solid ${i === 0 ? accent : t.control.border}`,
+                    color: i === 0 ? (onBrand ? "#0f172a" : "#fff") : t.text.primary,
+                    background: i === 0 ? rowColor : "transparent",
+                    border: `1px solid ${i === 0 ? rowColor : t.control.border}`,
                     padding: "4px 7px", minWidth: 46, textAlign: "center", flexShrink: 0,
                   }}
                 >
@@ -99,7 +101,7 @@ export function RankedLocationBoard({
                 </span>
                 {/* share rail */}
                 <span style={{ width: 74, height: 5, background: t.grid, flexShrink: 0 }}>
-                  <span style={{ display: "block", width: `${(d.value / data.max) * 100}%`, height: "100%", background: accent, opacity: i === 0 ? 1 : 0.7 }} />
+                  <span style={{ display: "block", width: `${(d.value / data.max) * 100}%`, height: "100%", background: rowColor, opacity: i === 0 ? 1 : 0.82 }} />
                 </span>
                 <span style={{ ...MONO, fontSize: 13, fontWeight: 700, color: t.text.primary, minWidth: 52, textAlign: "right", flexShrink: 0 }}>
                   {compact(d.value)}

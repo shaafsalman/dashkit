@@ -1,7 +1,8 @@
 import React, { useMemo, useState, memo } from "react";
-import { resolveTheme, lighten } from "./theme";
+import { resolveTheme, lighten, AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_GRID_PROPS } from "./theme";
 import { ChartCard, Legend, ChartTooltip, Icons, SIZES } from "./chrome";
 import { useMeasuredBox } from "./useMeasuredBox";
+import { compactNumber } from "./format";
 
 /**
  * StackedBarChart — "Team Performance": stacked rounded segments per period with
@@ -10,12 +11,23 @@ import { useMeasuredBox } from "./useMeasuredBox";
 
 const W_MIN = 640; // floor for the responsive viewBox width
 const H = 640;
-const PAD_L = 42;
-const PAD_R = 14;
+// The chart text is scaled to preserve a readable CSS-pixel size. Reserve the
+// axis gutter in the same generous viewBox space so compact labels such as
+// "25.0K" never lose their leading digit at narrow/container-driven sizes.
+const PAD_L = 110;
+const PAD_R = 30;
 const PAD_X = PAD_L;
 const TOP = 20;
 const BASE = 590;
 const SEG_GAP = 4;
+const niceCeiling = (value) => {
+  const safe = Math.max(Number(value) || 0, 1);
+  const power = 10 ** Math.floor(Math.log10(safe));
+  const normalized = safe / power;
+  const stops = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+  const next = stops.find((stop) => stop > normalized + 1e-9) || 10;
+  return next * power;
+};
 const DEFAULT_THEME = { base: "dark", surface: "#0c0d10", radius: 20, pad: 24, accent: "#e0701f" };
 
 const DEFAULT_SERIES = [
@@ -76,14 +88,19 @@ const StackedBarChart = memo(
     // available width and sat centered — the dead space on both sides. With
     // the ratios equal there is nothing left for the browser to letterbox.
     const [boxRef, box] = useMeasuredBox({ width: 1000, height: 300 });
-    const plotH = Math.max((SIZES[size] || SIZES.m) * heightScale, 80);
+    const fluid = size === "fill";
+    const plotH = fluid
+      ? Math.max(box.height || 300, 180)
+      : Math.max((SIZES[size] || SIZES.m) * heightScale, 80);
     const W = Math.max(Math.round((H * box.width) / plotH), W_MIN);
     // viewBox units per CSS pixel — keeps text at a stable on-screen size no
     // matter how wide the card gets.
     const u = H / plotH;
     const fpx = (cssPx) => Math.round(cssPx * u * 10) / 10;
-    const fmtAxis = axisFormat || ((v) => `${Math.round(v)}`);
-    const fmtVal = valueFormat || ((v) => `${Math.round(v)}${suffix}`);
+    const valueTick = { ...AXIS_VALUE_TICK, fontSize: fpx(12) };
+    const categoryTick = { ...AXIS_CATEGORY_TICK, fontSize: fpx(12.5) };
+    const fmtAxis = axisFormat || ((v) => compactNumber(v));
+    const fmtVal = valueFormat || ((v) => `${compactNumber(v)}${suffix}`);
     const [hover, setHover] = useState(null);
     // own state: which series are hidden (keyed by series key)
     const [hidden, setHidden] = useState({});
@@ -105,13 +122,17 @@ const StackedBarChart = memo(
       if (grouped) {
         // side-by-side: each category holds one sub-bar per active series
         const m = Math.max(activeSeries.length, 1);
-        const groupW = Math.min(step * 0.94, fpx(78) * m);
-        const sub = groupW / m;
-        const barW = sub * 0.90;
+        // Keep grouped columns visually light instead of letting two series
+        // consume almost the entire category slot. The axis/domain remains
+        // independent from this presentation width (and from legend toggles).
+        const barW = Math.min(step * 0.24, fpx(34));
+        const barGap = fpx(6);
+        const groupW = m * barW + Math.max(0, m - 1) * barGap;
         const allVals = data.flatMap((d) =>
-          activeSeries.map((sr) => d.values?.[sr.key] || 0)
+          series.map((sr) => d.values?.[sr.key] || 0)
         );
-        const maxTotal = Math.max(...allVals, 1);
+        const dataMax = Math.max(...allVals, 1);
+        const maxTotal = niceCeiling(dataMax);
         const scale = (BASE - TOP) / maxTotal;
         const cols = data.map((d, i) => {
           const cx = PAD_L + step * (i + 0.5);
@@ -120,7 +141,7 @@ const StackedBarChart = memo(
             const value = d.values?.[sr.key] || 0;
             const h = Math.max(value * scale, value > 0 ? 3 : 0);
             const topY = BASE - h;
-            return { ...sr, value, topY, h, x: x0 + k * sub + (sub - barW) / 2, w: barW };
+            return { ...sr, value, topY, h, x: x0 + k * (barW + barGap), w: barW };
           });
           return { ...d, cx, segs, i };
         });
@@ -131,9 +152,9 @@ const StackedBarChart = memo(
       // the card wide, while a 12-month view still fills the space.
       const barW = Math.min(step * 0.7, fpx(78));
       const totals = data.map((d) =>
-        activeSeries.reduce((s, sr) => s + (d.values?.[sr.key] || 0), 0)
+        series.reduce((s, sr) => s + (d.values?.[sr.key] || 0), 0)
       );
-      const maxTotal = Math.max(...totals, 1);
+      const maxTotal = niceCeiling(Math.max(...totals, 1));
       const scale = (BASE - TOP - Math.max(activeSeries.length - 1, 0) * SEG_GAP) / maxTotal;
       const cols = data.map((d, i) => {
         const cx = PAD_L + step * (i + 0.5);
@@ -149,7 +170,7 @@ const StackedBarChart = memo(
         return { ...d, cx, segs, i };
       });
       return { cols, barW, gridY, maxTotal };
-    }, [data, activeSeries, grouped, W, H, BASE, u]);
+    }, [data, series, activeSeries, grouped, W, H, BASE, u]);
 
     const tip = hover != null ? cols[hover] : null;
     // position the tooltip over the hovered column as viewBox-relative percentages
@@ -193,7 +214,7 @@ const StackedBarChart = memo(
     const renderChart = (detailed) => (
       <div
         ref={boxRef}
-        style={{ position: "relative", width: "100%", height: plotH }}
+        style={{ position: "relative", width: "100%", height: fluid && !detailed ? "100%" : plotH, minHeight: 0 }}
         onMouseLeave={() => setHover(null)}
       >
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" role="img" aria-label={title}>
@@ -211,20 +232,15 @@ const StackedBarChart = memo(
 
           {gridY.map((y, i) => {
             const val = maxTotal * ((gridY.length - 1 - i) / (gridY.length - 1));
-            const gridColor = t.mode === "light" ? "#94a3b8" : "#ffffff";
-            const gridOpacity = t.mode === "light" ? "0.55" : "0.18";
             return (
               <g key={i}>
-                <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke={gridColor} strokeOpacity={gridOpacity} strokeDasharray="4 5" />
-                <text x={PAD_L - 8} y={y + 4} textAnchor="end" fontSize="19" fontWeight="700" fill={t.mode === "light" ? "#334155" : t.text.secondary}>
+                <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke={t.grid} strokeDasharray={AXIS_GRID_PROPS.strokeDasharray} />
+                <text x={PAD_L - 8} y={y + fpx(4)} textAnchor="end" {...valueTick} fill={t.text.muted}>
                   {fmtAxis(val)}
                 </text>
               </g>
             );
           })}
-          {/* solid X + Y axis lines */}
-          <line x1={PAD_L} y1={TOP} x2={PAD_L} y2={BASE} stroke={t.mode === "light" ? "#64748b" : t.text.muted} strokeOpacity="0.7" strokeWidth="1.5" />
-          <line x1={PAD_L} y1={BASE} x2={W - PAD_R} y2={BASE} stroke={t.mode === "light" ? "#64748b" : t.text.muted} strokeOpacity="0.7" strokeWidth="1.5" />
 
           {cols.map((c) => (
             <g
@@ -239,6 +255,19 @@ const StackedBarChart = memo(
                     <g key={s.key} opacity={hover == null || hover === c.i ? 1 : 0.45} style={{ transition: "opacity .18s ease" }}>
                       <rect x={s.x ?? c.cx - barW / 2} y={s.topY} width={s.w ?? barW} height={s.h} rx={Math.min(8, (s.w ?? barW) / 2, s.h / 2)} fill={`url(#tp-${s.key})`} />
                       <rect x={s.x ?? c.cx - barW / 2} y={s.topY} width={s.w ?? barW} height={s.h} rx={Math.min(8, (s.w ?? barW) / 2, s.h / 2)} fill="url(#tp-hatch)" />
+                      {grouped && !detailed && (s.w ?? barW) >= fpx(18) && (
+                        <text
+                          x={(s.x ?? c.cx - barW / 2) + (s.w ?? barW) / 2}
+                          y={Math.max(fpx(13), s.topY - fpx(10))}
+                          textAnchor="middle"
+                          fontSize={fpx(12)}
+                          fontWeight="750"
+                          fontFamily="'JetBrains Mono', monospace"
+                          fill={t.text.primary}
+                        >
+                          {fmtVal(s.value)}
+                        </text>
+                      )}
                       {/* detailed-only: value label centered in each segment (when it fits) */}
                       {detailed && s.h >= 16 && (
                         <text
@@ -255,7 +284,7 @@ const StackedBarChart = memo(
                     </g>
                   )
               )}
-              <text x={c.cx} y={BASE + 34} textAnchor="middle" fontSize="20" fontWeight="700" fill={t.mode === "light" ? "#334155" : t.text.secondary}>
+              <text x={c.cx} y={BASE + fpx(18)} textAnchor="middle" dominantBaseline="middle" {...categoryTick} fill={t.text.secondary}>
                 {c.label}
               </text>
             </g>

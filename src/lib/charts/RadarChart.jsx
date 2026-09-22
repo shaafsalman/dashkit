@@ -21,6 +21,9 @@ const SORTS = [
 const RadarChart = memo(
   ({
     title = "Skill Profile",
+    subtitle,
+    icon,
+    iconColor,
     theme,
     controls,
     onControl,
@@ -154,12 +157,17 @@ const RadarChart = memo(
       <ChartCard
         theme={t}
         title={title}
+        subtitle={subtitle}
+        icon={icon}
+        iconColor={iconColor}
         controls={chartControls}
         onControl={onControl}
         width={width}
         size={size}
         expandable={expandable}
         className={className}
+        floatingHeader
+        headline={{ value: `${Math.round(sorted.reduce((sum, metric) => sum + Number(metric.value || 0), 0) / Math.max(sorted.length, 1))}%` }}
       >
         {renderChart}
       </ChartCard>

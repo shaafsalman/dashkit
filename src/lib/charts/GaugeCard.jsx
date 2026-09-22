@@ -35,6 +35,7 @@ const DEFAULT_THEME = { base: "dark", surface: "#1b1d21", radius: 16, pad: 24 };
 const GaugeCard = memo(
   ({
     title = "Synced Records",
+    subtitle,
     icon = null,
     theme,
     controls,
@@ -60,7 +61,8 @@ const GaugeCard = memo(
       const pe = angleFor(v);
       return { progEnd: pe, knob: P(R, pe) };
     }, [v]);
-    const text = valueText ?? `${value}`;
+    const text = `${valueText ?? value}`.replace(/%+$/, "");
+    const displayValue = `${text}%`;
 
     // tooltip anchored to the knob (the live datapoint), as viewBox %
     const tipLeft = `${(knob[0] / VBW) * 100}%`;
@@ -70,12 +72,15 @@ const GaugeCard = memo(
     const ticks = [0, 25, 50, 75, 100];
 
     const Gauge = ({ detailed }) => (
-      <div style={{ position: "relative" }}>
+      <div style={{ position: "relative", width: "100%", height: "100%", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <svg
           viewBox={`0 0 ${VBW} ${VBH}`}
           width="100%"
+          height="100%"
           role="img"
-          aria-label={`${title}: ${text}%`}
+          aria-label={`${title}: ${displayValue}`}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ maxWidth: 520 }}
         >
           <defs>
             <linearGradient id="gc-prog" x1="0" y1="0" x2="1" y2="0">
@@ -125,13 +130,13 @@ const GaugeCard = memo(
             fill={knobColor} stroke="#0c2f1b" strokeWidth="2"
           />
 
-          {/* center value */}
+          {/* The primary value lives in the shared top-right header. Keep the
+              center as a semantic label so the gauge never duplicates it. */}
           <text
-            x={CX} y={CY - 8} textAnchor="middle"
-            fontSize="42" fontWeight="700" fill={t.text.primary} fontStyle="italic"
+            x={CX} y={CY - 4} textAnchor="middle"
+            fontSize="14" fontWeight="700" fill={t.text.muted}
           >
-            {text}
-            <tspan fontSize="18">%</tspan>
+            Progress
           </text>
 
           {/* detailed: min/max endpoint labels */}
@@ -171,22 +176,25 @@ const GaugeCard = memo(
       <ChartCard
         theme={t}
         title={title}
+        subtitle={subtitle}
         icon={icon}
         controls={controls}
         onControl={onControl}
         width={width}
         size={size}
         className={className}
+        floatingHeader
+        headline={{ value: displayValue }}
       >
         {({ detailed }) => (
-          <>
-            <div style={{ height: 1, background: divider, marginBottom: 10 }} />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <div style={{ height: 1, background: divider, marginBottom: 12, flexShrink: 0 }} />
+            <div style={{ display: "grid", gridTemplateColumns: stats[1] ? "repeat(2, minmax(0, 1fr))" : "1fr", gap: 20, alignItems: "start", flexShrink: 0 }}>
               <Stat theme={t} {...stats[0]} />
               {stats[1] && <Stat theme={t} {...stats[1]} align="right" />}
             </div>
-            <Gauge detailed={detailed} />
-          </>
+            <div style={{ flex: 1, minHeight: 150, marginTop: 8 }}><Gauge detailed={detailed} /></div>
+          </div>
         )}
       </ChartCard>
     );

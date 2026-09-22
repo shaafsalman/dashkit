@@ -25,6 +25,7 @@ const PERIODS = {
 const BarcodeMeterCard = memo(
   ({
     title = "Anomalies",
+    subtitle,
     icon = null,
     theme,
     controls,
@@ -72,22 +73,19 @@ const BarcodeMeterCard = memo(
       },
     ];
 
-    const pctLabel = pctText.replace(",", ".");
+    const pctLabel = `${pctText}`.replace(",", ".").replace(/%+$/, "");
+    const displayValue = `${pctLabel}%`;
     const periodLabel = period.charAt(0).toUpperCase() + period.slice(1);
 
     const body = (detailed) => (
-      <>
-        <div style={{ fontSize: 56, fontWeight: 700, lineHeight: 1, color: t.text.primary, marginBottom: 12 }}>
-          {pctText}
-          <span style={{ fontSize: 24, color: t.text.muted, verticalAlign: "top" }}>%</span>
-        </div>
+      <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ height: 1, background: t.mode === "light" ? "rgba(15,23,42,0.1)" : "rgba(255,255,255,0.1)", marginBottom: 16 }} />
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: kpis[1] ? "repeat(2, minmax(0, 1fr))" : "1fr", gap: 20, alignItems: "start", marginBottom: 16, flexShrink: 0 }}>
           <Stat theme={t} {...kpis[0]} />
           {kpis[1] && <Stat theme={t} {...kpis[1]} align="right" />}
         </div>
 
-        <div style={{ position: "relative" }}>
+        <div style={{ position: "relative", flex: 1, minHeight: 92, display: "flex", alignItems: "center" }}>
           <svg viewBox={`0 0 ${W} ${MH}`} width="100%" role="img" aria-label={`${title} meter: ${pctLabel}%`}>
             <rect x="0" y={MH / 2 - 18} width="22" height="36" rx="4" fill={t.mode === "light" ? "#0f172a" : "#ffffff"} />
             <rect x="30" y={MH / 2 - 18} width="8" height="36" rx="3" fill={accent} />
@@ -161,19 +159,22 @@ const BarcodeMeterCard = memo(
             </tbody>
           </table>
         )}
-      </>
+      </div>
     );
 
     return (
       <ChartCard
         theme={t}
         title={title}
+        subtitle={subtitle}
         icon={icon}
         controls={periodControls}
         onControl={onControl}
         width={width}
         size={size}
         className={className}
+        floatingHeader
+        headline={{ value: displayValue }}
       >
         {({ detailed }) => body(detailed)}
       </ChartCard>

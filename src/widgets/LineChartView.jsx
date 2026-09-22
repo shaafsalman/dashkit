@@ -14,6 +14,7 @@ import {
 import { Line } from "react-chartjs-2";
 import ChartDataLabels from "chartjs-plugin-datalabels";
 import { isDarkMode } from "../isDarkMode";
+import { compactNumber } from "../lib/charts/format";
 
 const SANS = "'Space Grotesk', ui-sans-serif, system-ui, sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -310,10 +311,7 @@ const LineChartView = ({
       formattedValue = `${(value / 1000)
         .toFixed(decimal ? 1 : 0)
         .replace(/\.0$/, "")}K`;
-    else
-      formattedValue = decimal
-        ? value.toLocaleString()
-        : Math.round(value).toLocaleString();
+    else formattedValue = compactNumber(value);
 
     if (showPercentage) {
       formattedValue = `${formattedValue}%`;

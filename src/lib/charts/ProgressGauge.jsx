@@ -115,6 +115,8 @@ const ProgressGauge = memo(
         width={width}
         size={size}
         className={className}
+        floatingHeader
+        headline={{ value: `${value}%` }}
         footer={<Legend theme={t} items={legendItems.map(({ value, ...rest }) => rest)} swatch="dot" onToggle={toggle} />}
         footerDetailed={<Legend theme={t} items={legendItems} swatch="dot" onToggle={toggle} />}
       >
@@ -151,8 +153,7 @@ const ProgressGauge = memo(
               {/* round knob at the end of the progress (first) arc — white ring + crisp border */}
               <circle cx={knob[0]} cy={knob[1]} r="15" fill={knobColor} stroke="#ffffff" strokeWidth="3" />
               <circle cx={knob[0]} cy={knob[1]} r="16.5" fill="none" stroke={borderCol} strokeWidth="1.5" />
-              <text x={CX} y={CY + 6} textAnchor="middle" fontSize="52" fontWeight="800" fill={t.text.primary}>{value}%</text>
-              <text x={CX} y={CY + 30} textAnchor="middle" fontSize="13" fontWeight="600" fill={arcs[0]?.color || "#3aa564"}>{valueLabel}</text>
+              <text x={CX} y={CY + 2} textAnchor="middle" fontSize="15" fontWeight="700" fill={arcs[0]?.color || "#3aa564"}>{valueLabel}</text>
 
               {/* detailed mode: value label on every segment along the arc */}
               {detailed &&

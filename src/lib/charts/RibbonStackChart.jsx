@@ -1,6 +1,8 @@
 import React, { useMemo, useState, memo } from "react";
-import { resolveTheme, lighten } from "./theme";
+import { resolveTheme, lighten, AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_GRID_PROPS } from "./theme";
 import { ChartCard, Legend, ChangePill, ChartTooltip } from "./chrome";
+import { useMeasuredBox } from "./useMeasuredBox";
+import { compactCurrency } from "./format";
 
 /**
  * RibbonStackChart — generalized stacked-segment chart with connecting ribbons.
@@ -40,12 +42,8 @@ const VBH = 352;
 const SEG_GAP = 5;
 
 const makeMoney =
-  (currency = "$", decimals = 2) =>
-  (v) =>
-    `${currency}${Number(v || 0).toLocaleString("en-US", {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    })}`;
+  (currency = "$", _decimals = 2) =>
+  (v) => compactCurrency(v, currency);
 
 export const DEFAULT_SERIES = [
   { key: "china", label: "China", color: "#3a2a8c" },
@@ -111,16 +109,24 @@ const RibbonStackChart = memo((props) => {
   // legend toggle (own state) + bar hover state
   const [hidden, setHidden] = useState(() => ({}));
   const [hover, setHover] = useState(null); // period index
+  const [plotRef, plotBox] = useMeasuredBox({ width: 560, height: VBH });
   const toggle = (key) => setHidden((h) => ({ ...h, [key]: !h[key] }));
 
   const activeSeries = useMemo(() => series.filter((s) => !hidden[s.key]), [series, hidden]);
 
   const { periods, ribbons, vbw, grid, barW } = useMemo(() => {
     const n = data.length;
-    const gap = n > 1 ? Math.max(60, Math.min(COL_GAP, 900 / (n - 1))) : COL_GAP;
+    const naturalGap = n > 1 ? Math.max(60, Math.min(COL_GAP, 900 / (n - 1))) : COL_GAP;
+    const naturalWidth = AXIS_W + PAD_X * 2 + Math.max(n - 1, 0) * naturalGap;
+    // Match the live container aspect ratio in fill mode so the SVG does not
+    // letterbox into a small island in the middle of a wide dashboard card.
+    const aspectWidth = size === "fill" && plotBox.height > 0
+      ? VBH * (plotBox.width / plotBox.height)
+      : naturalWidth;
+    const vbw = Math.max(naturalWidth, aspectWidth);
+    const gap = n > 1 ? (vbw - AXIS_W - PAD_X * 2) / (n - 1) : COL_GAP;
     // Bar width must stay narrower than the gap so adjacent bars never overlap
     const barW = Math.min(BAR_W, Math.floor(gap * 0.58));
-    const vbw = AXIS_W + PAD_X * 2 + Math.max(n - 1, 0) * gap;
 
     const totals = data.map(
       (d) => activeSeries.reduce((s, sr) => s + (d.values?.[sr.key] || 0), 0)
@@ -174,13 +180,13 @@ const RibbonStackChart = memo((props) => {
       });
     }
 
-    const grid =
-      showAxis && yTicks
-        ? yTicks.map((v) => ({ v, y: y(v), label: axisFmt(v) }))
-        : [];
+    const tickValues = yTicks || Array.from({ length: 5 }, (_, index) => (ymax * index) / 4);
+    const grid = showAxis
+      ? tickValues.map((v) => ({ v, y: y(v), label: axisFmt(v) }))
+      : [];
 
     return { periods, ribbons, vbw, grid, barW };
-  }, [data, activeSeries, showAxis, yTicks, yMaxProp, AXIS_W, axisFmt, PAD_X, TOP_Y]);
+  }, [data, activeSeries, showAxis, yTicks, yMaxProp, AXIS_W, axisFmt, PAD_X, TOP_Y, size, plotBox.width, plotBox.height]);
 
   const accentForLight = t.mode === "light";
   const headlineBlock = (
@@ -217,8 +223,8 @@ const RibbonStackChart = memo((props) => {
   ];
 
   const renderChart = ({ detailed }) => (
-    <div style={{ position: "relative" }}>
-      {headlinePosition === "top-right" && (
+    <div ref={plotRef} style={{ position: "relative", height: size === "fill" && !detailed ? "100%" : undefined, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      {!floatingHeader && headlinePosition === "top-right" && (
         <div style={{ position: "absolute", top: 0, right: 0, zIndex: 2, textAlign: "right", pointerEvents: "none" }}>
           {headlineLabel && (
             <div style={{ fontSize: 13, fontWeight: 500, color: t.text.muted }}>{headlineLabel}</div>
@@ -253,8 +259,8 @@ const RibbonStackChart = memo((props) => {
 
         {grid.map((g) => (
           <g key={`grid-${g.v}`}>
-            <line x1={AXIS_W + 6} y1={g.y} x2={vbw} y2={g.y} stroke={t.grid} strokeDasharray="4 5" />
-            <text x={AXIS_W - 6} y={g.y + 4} textAnchor="end" fontSize="13" fontWeight="600" fill={t.text.muted}>
+            <line x1={AXIS_W + 6} y1={g.y} x2={vbw} y2={g.y} stroke={t.grid} strokeDasharray={AXIS_GRID_PROPS.strokeDasharray} />
+            <text x={AXIS_W - 6} y={g.y + 4} textAnchor="end" {...AXIS_VALUE_TICK} fontSize="12" fill={t.text.muted}>
               {g.label}
             </text>
           </g>
@@ -313,7 +319,7 @@ const RibbonStackChart = memo((props) => {
                   {fmt(p.total)}
                 </text>
               )}
-              <text x={p.cx} y={LABEL_Y} textAnchor="middle" fontSize="14" fontWeight="500" fill={t.text.muted}>
+              <text x={p.cx} y={LABEL_Y} textAnchor="middle" {...AXIS_CATEGORY_TICK} fontSize="12.5" fill={t.text.secondary}>
                 {p.label}
               </text>
             </g>

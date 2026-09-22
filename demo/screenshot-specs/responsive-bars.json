@@ -1,0 +1,42 @@
+{
+  "component": "StackedBarChart",
+  "width": 1200,
+  "height": 560,
+  "pad": 28,
+  "bg": "#F4F7FB",
+  "props": {
+    "title": "Performance by month",
+    "headerStatLabel": "Current",
+    "headerStatValue": "23.8K",
+    "grouped": true,
+    "suffix": "",
+    "showLegend": true,
+    "size": "xl",
+    "width": 1200,
+    "series": [
+      { "key": "previous", "label": "Previous", "color": "#94A3B8" },
+      { "key": "current", "label": "Current", "color": "#3B82F6" }
+    ],
+    "data": [
+      { "label": "Jan", "values": { "previous": 7100, "current": 8200 } },
+      { "label": "Feb", "values": { "previous": 7600, "current": 9100 } },
+      { "label": "Mar", "values": { "previous": 8400, "current": 9800 } },
+      { "label": "Apr", "values": { "previous": 9100, "current": 11200 } },
+      { "label": "May", "values": { "previous": 10300, "current": 12600 } },
+      { "label": "Jun", "values": { "previous": 11400, "current": 13900 } },
+      { "label": "Jul", "values": { "previous": 12700, "current": 15100 } },
+      { "label": "Aug", "values": { "previous": 13800, "current": 16800 } },
+      { "label": "Sep", "values": { "previous": 14900, "current": 18100 } },
+      { "label": "Oct", "values": { "previous": 16400, "current": 19900 } },
+      { "label": "Nov", "values": { "previous": 17900, "current": 21600 } },
+      { "label": "Dec", "values": { "previous": 19100, "current": 23800 } }
+    ],
+    "theme": {
+      "base": "light",
+      "accent": "#3B82F6",
+      "series": ["#3B82F6", "#94A3B8", "#0EA5E9", "#7C3AED", "#F59E0B", "#E11D48"],
+      "radius": 16,
+      "frame": { "border": "rgba(15,23,42,.10)" }
+    }
+  }
+}

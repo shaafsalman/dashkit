@@ -22,6 +22,7 @@ import { ChartCard, resolveTheme } from "../charts";
 export function RankedList({ theme, title, icon, iconColor, items = [], formatValue, subtitle, solid = false, invertColor, prevLabel }) {
   const t = resolveTheme(theme, "light");
   const accent = iconColor || t.accent;
+  const onBrand = String(t.text.primary).toLowerCase() === "#ffffff";
   const [hover, setHover] = useState(null);
   const rows = [...items].filter((d) => (d.value || 0) > 0).sort((a, b) => b.value - a.value).slice(0, 8);
   const max = Math.max(...rows.map((d) => Math.max(d.value || 0, d.prev || 0)), 1);
@@ -30,9 +31,9 @@ export function RankedList({ theme, title, icon, iconColor, items = [], formatVa
   const hasPrev = rows.some((d) => d.prev != null);
 
   const ink = invertColor || accent;
-  const hoverBg = solid ? "#ffffff" : accent;
-  const hoverText = solid ? ink : "#ffffff";
-  const hoverBar = solid ? ink : "#ffffff";
+  const hoverBg = onBrand ? "rgba(255,255,255,.14)" : solid ? "#ffffff" : accent;
+  const hoverText = onBrand ? "#ffffff" : solid ? ink : "#ffffff";
+  const hoverBar = onBrand ? "#ffffff" : solid ? ink : "#ffffff";
 
   if (!rows.length) {
     return (
@@ -60,6 +61,7 @@ export function RankedList({ theme, title, icon, iconColor, items = [], formatVa
             const inkNow = lit ? hoverText : t.text.primary;
             const inkDim = lit ? hoverText : t.text.muted;
             const deltaPct = hasPrev && d.prev ? Math.round(((d.value - d.prev) / d.prev) * 100) : null;
+            const rowColor = onBrand ? t.series[i % t.series.length] : (i === 0 ? accent : `${accent}bb`);
             return (
               <div
                 key={d.label}
@@ -96,11 +98,11 @@ export function RankedList({ theme, title, icon, iconColor, items = [], formatVa
                     bar underneath IS the comparison, not decoration */}
                 <span style={{ display: "flex", flexDirection: "column", gap: 2, width: 70, flexShrink: 0 }}>
                   <span style={{ height: 5, background: lit ? `${hoverText}26` : t.grid }}>
-                    <span style={{ display: "block", width: `${(d.value / max) * 100}%`, height: "100%", background: lit ? hoverBar : (i === 0 ? accent : `${accent}bb`) }} />
+                    <span style={{ display: "block", width: `${(d.value / max) * 100}%`, height: "100%", background: lit ? hoverBar : rowColor }} />
                   </span>
                   {hasPrev && (
                     <span style={{ height: 3, background: lit ? `${hoverText}1a` : t.grid }}>
-                      <span style={{ display: "block", width: `${((d.prev || 0) / max) * 100}%`, height: "100%", background: lit ? `${hoverBar}88` : `${accent}55` }} />
+                      <span style={{ display: "block", width: `${((d.prev || 0) / max) * 100}%`, height: "100%", background: lit ? `${hoverBar}88` : (onBrand ? "rgba(255,255,255,.28)" : `${accent}55`) }} />
                     </span>
                   )}
                 </span>

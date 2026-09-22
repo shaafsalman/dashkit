@@ -1,7 +1,8 @@
 import React, { useMemo, memo, useState, useId } from "react";
-import { resolveTheme, lighten, darken } from "./theme";
+import { resolveTheme, lighten, darken, contrastingText } from "./theme";
 import { ChartCard, ChartTooltip } from "./chrome";
 import { useMeasuredBox } from "./useMeasuredBox";
+import { compactNumber } from "./format";
 
 /**
  * FunnelChart — the classic solid tapering funnel: one trapezoid per stage,
@@ -76,7 +77,7 @@ const FunnelChart = memo(
     showHeader = true,
   }) => {
     const t = resolveTheme(theme, "light");
-    const fmt = formatValue || ((v) => Number(v || 0).toLocaleString("en-US"));
+    const fmt = formatValue || compactNumber;
     const uid = useId().replace(/:/g, "");
     const [hover, setHover] = useState(null); // {kind:'stage'|'loss', i}
 
@@ -123,8 +124,12 @@ const FunnelChart = memo(
       const totalH = n * bandH + (n - 1) * BAND_GAP;
       const offsetY = Math.max((H - totalH) / 2, 0);
       const cx = W / 2;
+      // Funnels become visually meaningless when their width is allowed to
+      // grow independently of height. Bound the silhouette to a stable
+      // width:height ratio and center it inside wide hosts.
+      const funnelW = Math.min(Math.max(W - 16, 0), H * 1.55);
       // Compressed scale — see MIN_W_RATIO note at the top of the file.
-      const bw = (i) => W * (MIN_W_RATIO + (1 - MIN_W_RATIO) * rows[i].ratio);
+      const bw = (i) => funnelW * (MIN_W_RATIO + (1 - MIN_W_RATIO) * rows[i].ratio);
 
       const labelPx = Math.min(13, Math.max(9, bandH * 0.15));
       const valuePx = Math.min(24, Math.max(11.5, bandH * 0.3));
@@ -173,6 +178,8 @@ const FunnelChart = memo(
             const pctTxt = `${r.pct}%`;
             const pctW = pctTxt.length * pctPx * 0.62 + PCT_PAD;
             const labelBudget = wTop - LABEL_PAD - PCT_PAD - pctW;
+            const bandInk = contrastingText(r.color, "#ffffff", "#0f172a");
+            const bandMuted = bandInk === "#ffffff" ? "rgba(255,255,255,.78)" : "rgba(15,23,42,.72)";
 
             return (
               <g
@@ -187,12 +194,12 @@ const FunnelChart = memo(
                   fill={r.value < 0 ? LOSS : `url(#fn-${uid}-${i})`}
                 />
                 {/* label — top-left corner */}
-                <text x={topLeftX} y={topTextY} textAnchor="start" fontFamily={SANS} fontSize={labelPx} fontWeight={600} letterSpacing="-0.01em" fill="rgba(255,255,255,0.92)" pointerEvents="none">
+                <text x={topLeftX} y={topTextY} textAnchor="start" fontFamily={SANS} fontSize={labelPx} fontWeight={600} letterSpacing="-0.01em" fill={bandInk} pointerEvents="none">
                   {fitText(r.label, labelBudget, labelPx)}
                 </text>
                 {/* % of top — top-right corner */}
                 {!dense && (
-                  <text x={topRightX} y={topTextY} textAnchor="end" fontFamily={MONO} fontSize={pctPx} fontWeight={700} fill="rgba(255,255,255,0.78)" pointerEvents="none">
+                  <text x={topRightX} y={topTextY} textAnchor="end" fontFamily={MONO} fontSize={pctPx} fontWeight={700} fill={bandMuted} pointerEvents="none">
                     {pctTxt}
                   </text>
                 )}
@@ -200,7 +207,7 @@ const FunnelChart = memo(
                     shows the number elsewhere (e.g. the ranked widget's own
                     stats), where repeating it inside the band is just noise. */}
                 {showBandValues && (
-                  <text x={cx} y={bot - PAD * 1.1} textAnchor="middle" fontFamily={MONO} fontSize={valuePx} fontWeight={800} letterSpacing="-0.02em" fill="#fff" pointerEvents="none">
+                  <text x={cx} y={bot - PAD * 1.1} textAnchor="middle" fontFamily={MONO} fontSize={valuePx} fontWeight={800} letterSpacing="-0.02em" fill={bandInk} pointerEvents="none">
                     {fmt(r.value)}
                   </text>
                 )}

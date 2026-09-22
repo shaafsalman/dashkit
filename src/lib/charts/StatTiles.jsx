@@ -26,6 +26,7 @@ const sparkPath = (vals, fillTo) => {
 const StatTiles = memo(
   ({
     title = "Overview",
+    subtitle,
     theme,
     controls,
     onControl,
@@ -36,26 +37,30 @@ const StatTiles = memo(
       { label: "Sessions", value: "92.4K", change: 8.7, spark: [30, 28, 33, 31, 38, 40, 44] },
     ],
     width = 560,
+    size = "m",
     className = "",
   }) => {
     const t = resolveTheme(theme, "dark");
-    const tileBg = t.mode === "light" ? "#f6f8fb" : "rgba(255,255,255,0.03)";
+    const onBrand = String(t.text.primary).toLowerCase() === "#ffffff";
+    const tileBg = onBrand ? "rgba(255,255,255,0.12)" : t.mode === "light" ? "#f6f8fb" : "rgba(255,255,255,0.03)";
 
     return (
-      <ChartCard theme={t} title={title} controls={controls} onControl={onControl} width={width} className={className}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+      <ChartCard theme={t} title={title} subtitle={subtitle} controls={controls} onControl={onControl} width={width} size={size} className={className} floatingHeader headline={{ value: tiles[0]?.value ?? "—" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, height: "100%", minHeight: 0 }}>
           {tiles.map((tile, i) => {
             const color = tile.color || t.series[i % t.series.length];
             const { line, area } = sparkPath(tile.spark, SH);
             return (
-              <div key={tile.label} style={{ background: tileBg, borderRadius: 14, padding: 14 }}>
-                <div style={{ fontSize: 13, color: t.text.muted, marginBottom: 4 }}>{tile.label}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 22, fontWeight: 800, color: t.text.primary }}>{tile.value}</span>
-                </div>
-                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
+              <div key={tile.label} style={{ background: tileBg, borderRadius: 14, padding: 16, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, color: onBrand ? "rgba(255,255,255,.74)" : t.text.muted, marginBottom: 6 }}>{tile.label}</div>
+                    <div style={{ fontSize: 24, lineHeight: 1, fontWeight: 800, letterSpacing: "-0.035em", color: t.text.primary }}>{tile.value}</div>
+                  </div>
                   <ChangePill theme={t} value={tile.change} />
-                  <svg viewBox={`0 0 ${SW} ${SH}`} width="60" height="22" preserveAspectRatio="none" aria-hidden="true">
+                </div>
+                <div style={{ marginTop: "auto", paddingTop: 18, height: 112, minHeight: 74 }}>
+                  <svg viewBox={`0 0 ${SW} ${SH}`} width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true">
                     <defs>
                       <linearGradient id={`st-${i}`} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor={color} stopOpacity="0.35" />
@@ -63,7 +68,7 @@ const StatTiles = memo(
                       </linearGradient>
                     </defs>
                     <path d={area} fill={`url(#st-${i})`} />
-                    <path d={line} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" />
+                    <path d={line} fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" />
                   </svg>
                 </div>
               </div>

@@ -14,6 +14,9 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_GRID_PROPS } from "./lib/charts/theme";
+import { resolveTheme } from "./lib/charts/theme";
+import { ChartCard } from "./lib/charts/chrome";
+import { compactNumber } from "./lib/charts/format";
 import useContainerDensity from "./widgets/useContainerDensity.js";
 import {
   BarChart3,
@@ -69,15 +72,14 @@ const MONTHS = {
   December: "Dec",
 };
 const MONTH_ORDER = Object.keys(MONTHS);
+const MONTH_INDEX = new Map(
+  MONTH_ORDER.flatMap((month, index) => [[month, index], [MONTHS[month], index]])
+);
 
 const fmt = (v, pct) =>
   pct
     ? `${Math.round(v)}%`
-    : v >= 1e6
-    ? `${(v / 1e6).toFixed(1)}M`
-    : v >= 1e3
-    ? `${(v / 1e3).toFixed(1)}K`
-    : Math.round(v).toLocaleString();
+    : compactNumber(v);
 
 const Tooltip = memo(({ active, payload, label, f }) =>
   active && payload?.length ? (
@@ -255,7 +257,14 @@ const ComparisonChart = memo(
     // the footer (year totals + expand-to-stats — the host's own footer
     // already shows equivalent stats). Just ResponsiveContainer + the plot.
     embedded = false,
+    libraryCard = false,
+    subtitle,
+    theme,
+    width = "100%",
+    size = "fill",
+    expandable = false,
   }) => {
+    const cardTheme = resolveTheme(theme, "light");
     const [type, setType] = useState(defaultType);
     const palette = colors && colors.length > 0 ? colors : COLORS;
     const color = useCallback((i) => palette[i % palette.length], [palette]);
@@ -274,8 +283,13 @@ const ComparisonChart = memo(
     // Own rendered width, not the viewport — this sits in bento cells as
     // narrow as 4/12 columns next to 8/12-column siblings, so a viewport
     // breakpoint would still render full-width chrome into a narrow box.
-    const [densityRef, density] = useContainerDensity();
+    const [densityRef, density, measuredWidth] = useContainerDensity();
     const compact = density !== "lg";
+    // Plot density is intentionally independent from chrome density. A
+    // 640px card still needs compact icon controls, but it has ample room for
+    // twelve axis labels and values. Only genuinely narrow plots suppress
+    // direct value labels; the tooltip remains available for every point.
+    const plotCompact = measuredWidth != null && measuredWidth < 440;
 
     // Fullscreen modal — same expand/Escape/scroll-lock convention the
     // shared ChartCard already uses everywhere else in the chart library.
@@ -313,12 +327,13 @@ const ComparisonChart = memo(
         })
         .filter((r) => years.some((y) => r[y] > 0));
 
-      const isMonth = rows.some((r) => MONTH_ORDER.includes(r.name));
+      const isMonth = rows.some((r) => MONTH_INDEX.has(r.name));
       const sorted = (
         isMonth
           ? rows.sort(
               (a, b) =>
-                MONTH_ORDER.indexOf(a.name) - MONTH_ORDER.indexOf(b.name)
+                (MONTH_INDEX.get(a.name) ?? Number.MAX_SAFE_INTEGER) -
+                (MONTH_INDEX.get(b.name) ?? Number.MAX_SAFE_INTEGER)
             )
           : rows.sort(
               (a, b) =>
@@ -359,10 +374,7 @@ const ComparisonChart = memo(
 
     const f = useCallback((v) => fmt(v, showPercentage), [showPercentage]);
     const n = years.length;
-    // Labels always render now (barLabelSizing shrinks/simplifies them to
-    // fit instead of hiding past a year-count threshold) — matches the
-    // ranked bar chart's "always show labels" rule.
-    const labels = true;
+    const labels = !plotCompact && !libraryCard;
     // A narrow bento cell needs the same compact stat treatment a 5-year
     // comparison already gets — both are "not enough width per column".
     const sm = n > 4 || compact;
@@ -383,12 +395,14 @@ const ComparisonChart = memo(
           ? { top: 30, right: 4, left: 2, bottom: 2 }
           : { top: 26, right: 8, left: 0, bottom: 0 },
       };
-      const xa = <XAxis dataKey="displayName" tick={AXIS_CATEGORY_TICK} axisLine={false} tickLine={false} />;
+      const categorySlots = Math.max(3, Math.floor((measuredWidth || 600) / 50));
+      const tickInterval = Math.max(0, Math.ceil(chartData.length / categorySlots) - 1);
+      const xa = <XAxis dataKey="displayName" tick={{ ...AXIS_CATEGORY_TICK, fill: cardTheme.text.secondary }} axisLine={false} tickLine={false} interval={tickInterval} />;
       // 34px clipped the leading digit off 5-glyph ticks like "36.0K" — the
       // "6.0K"/"7.0K" truncation the user caught. 44px is the actual minimum
       // for that width at the shared axis font size.
-      const ya = <YAxis tickFormatter={f} tick={AXIS_VALUE_TICK} axisLine={false} tickLine={false} width={compact ? 44 : 55} />;
-      const g = <CartesianGrid {...AXIS_GRID_PROPS} vertical={false} />;
+      const ya = <YAxis tickFormatter={f} tick={{ ...AXIS_VALUE_TICK, fill: cardTheme.text.muted }} axisLine={false} tickLine={false} width={compact ? 44 : 55} />;
+      const g = <CartesianGrid {...AXIS_GRID_PROPS} stroke={cardTheme.grid} vertical={false} />;
       const tt = <RechartsTooltip content={<Tooltip f={f} />} />;
 
       if (type === "area") {
@@ -538,7 +552,39 @@ const ComparisonChart = memo(
           ))}
         </BarChart>
       );
-    }, [type, chartData, years, f, total, barSize, labels, n, compact, color, uid]);
+    }, [type, chartData, years, f, total, barSize, labels, n, compact, color, uid, measuredWidth, cardTheme.text.secondary, cardTheme.text.muted, cardTheme.grid]);
+
+    if (libraryCard) {
+      if (!n) return <Empty title={title} Icon={Icon} />;
+      const primaryYear = years[years.length - 1];
+      const latest = chartData[chartData.length - 1]?.[primaryYear] || 0;
+      const typeControl = {
+        type: "dropdown",
+        value: type,
+        options: CHART_TYPES.map((item) => ({ label: item.label, value: item.id })),
+        onChange: setType,
+      };
+      return (
+        <ChartCard
+          theme={cardTheme}
+          title={title}
+          subtitle={subtitle}
+          icon={<Icon size={18} />}
+          controls={[typeControl]}
+          headline={{ value: f(latest) }}
+          floatingHeader
+          expandable={expandable}
+          width={width}
+          size={size}
+        >
+          <div ref={densityRef} style={{ width: "100%", height: "100%", minHeight: 0 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              {chart()}
+            </ResponsiveContainer>
+          </div>
+        </ChartCard>
+      );
+    }
 
     // Embedded: just the plot, none of this component's own card/header/
     // footer/type-switcher — the ranked widget supplies all of that itself.

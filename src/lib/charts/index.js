@@ -38,6 +38,7 @@ export {
   AXIS_GRID_PROPS,
 } from "./theme";
 export { ChartCard, HeaderControls, Legend, ChangePill, Stat, Icons, ChartTooltip, SIZES } from "./chrome";
+export { compactNumber, compactCurrency } from "./format";
 
 // Back-compat alias for the brand series palette.
 export { SERIES_PALETTE as RIBBON_PALETTE } from "./theme";

@@ -1,0 +1,33 @@
+{
+  "component": "DualLineChart",
+  "width": 1200,
+  "height": 560,
+  "pad": 28,
+  "bg": "#F4F7FB",
+  "props": {
+    "title": "Product momentum",
+    "subtitle": "Current period vs previous period",
+    "size": "xl",
+    "width": 1200,
+    "total": 180100,
+    "changePct": 15.8,
+    "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "before": {
+      "label": "Previous",
+      "color": "#94A3B8",
+      "values": [7100, 7600, 8400, 9100, 10300, 11400, 12700, 13800, 14900, 16400, 17900, 19100]
+    },
+    "after": {
+      "label": "Current",
+      "color": "#3B82F6",
+      "values": [8200, 9100, 9800, 11200, 12600, 13900, 15100, 16800, 18100, 19900, 21600, 23800]
+    },
+    "theme": {
+      "base": "light",
+      "accent": "#3B82F6",
+      "series": ["#3B82F6", "#94A3B8", "#0EA5E9", "#7C3AED", "#F59E0B", "#E11D48"],
+      "radius": 16,
+      "frame": { "border": "rgba(15,23,42,.10)" }
+    }
+  }
+}

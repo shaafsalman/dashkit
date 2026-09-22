@@ -8,9 +8,23 @@ import { MONO, PLANE, compact, Empty } from "./_shared.jsx";
  * can stretch to any card width; the aircraft is a fixed-size SVG pinned to the
  * progress point, so its shape never distorts with the container.
  * ────────────────────────────────────────────────────────────────────────── */
-export function ProgressTrackList({ theme, title = "Fleet Utilisation by Tail", icon, iconColor, tails = [] }) {
+export function ProgressTrackList({
+  theme,
+  title = "Resource utilisation",
+  subtitle,
+  icon,
+  iconColor,
+  tails = [],
+  itemLabel = "Item",
+  metricLabel = "Utilisation",
+  valueLabel = "Value",
+  unitLabel = "units",
+  headlineValue,
+  formatValue,
+}) {
   const t = resolveTheme(theme, "light");
   const accent = iconColor || t.accent;
+  const onBrand = String(t.text.primary).toLowerCase() === "#ffffff";
   const [hover, setHover] = useState(null);
 
   const data = useMemo(() => {
@@ -29,9 +43,8 @@ export function ProgressTrackList({ theme, title = "Fleet Utilisation by Tail", 
     );
   }
 
-  // Whole hours below 10K — compact() collapses 1,243 and 1,190 to the same
-  // "1.2K", which makes two differently-used airframes look identical.
-  const hours = (n) => (n >= 1e4 ? compact(n) : Math.round(n).toLocaleString());
+  // Use the same compact K/M/B notation as every other Dashkit metric.
+  const hours = formatValue || compact;
   const TRACK_H = 12;
   const PLANE_BOX = 22;
 
@@ -45,7 +58,12 @@ export function ProgressTrackList({ theme, title = "Fleet Utilisation by Tail", 
       title={title}
       icon={icon}
       iconColor={iconColor}
-      subtitle={`${data.clean.length} tails · ${compact(data.total)} hours`}
+      subtitle={subtitle || `${data.clean.length} items`}
+      floatingHeader
+      headline={{
+        value: headlineValue ?? hours(data.total),
+        legend: <span style={{ ...MONO, fontSize: 10.5, color: t.text.muted }}>{unitLabel}</span>,
+      }}
     >
       {() => (
         // flex column with flex-1 rows: a short fleet (5 tails in a tall
@@ -61,9 +79,9 @@ export function ProgressTrackList({ theme, title = "Fleet Utilisation by Tail", 
               background: t.surface, borderBottom: `1px solid ${t.control.border}`,
             }}
           >
-            <span style={{ minWidth: 82, flexShrink: 0, textAlign: "center" }}>Tail</span>
-            <span style={{ flex: 1, minWidth: 0 }}>Utilisation</span>
-            <span style={{ minWidth: 62, flexShrink: 0, textAlign: "right" }}>Hours</span>
+            <span style={{ minWidth: 82, flexShrink: 0, textAlign: "center" }}>{itemLabel}</span>
+            <span style={{ flex: 1, minWidth: 0 }}>{metricLabel}</span>
+            <span style={{ minWidth: 62, flexShrink: 0, textAlign: "right" }}>{valueLabel}</span>
             <span style={{ minWidth: 40, flexShrink: 0, textAlign: "right" }}>Share</span>
           </div>
           {data.clean.map((d, i) => {
@@ -72,9 +90,10 @@ export function ProgressTrackList({ theme, title = "Fleet Utilisation by Tail", 
             const lead = i === 0;
             const col = lead ? accent : t.text.secondary;
             const lit = hover === i;
+            const brandRail = onBrand ? (t.series[i % t.series.length] || "#cbd5e1") : col;
             // Same inverted-row hover as RankedList: the whole row fills with
             // the accent, everything on it inverts to white.
-            const hoverBg = accent;
+            const hoverBg = onBrand ? "rgba(255,255,255,0.14)" : accent;
             const hoverText = "#ffffff";
             // Travel between a 10px threshold margin and PLANE_BOX from the end.
             const pos = `calc(10px + ${frac} * (100% - ${10 + PLANE_BOX}px))`;
@@ -96,9 +115,9 @@ export function ProgressTrackList({ theme, title = "Fleet Utilisation by Tail", 
                 <span
                   style={{
                     ...MONO, fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
-                    color: lit ? hoverBg : (lead ? "#fff" : t.text.primary),
-                    background: lit ? "#fff" : (lead ? accent : "transparent"),
-                    border: `1px solid ${lit ? "#fff" : (lead ? accent : t.control.border)}`,
+                    color: lit ? "#fff" : (lead ? (onBrand ? "#0f172a" : "#fff") : t.text.primary),
+                    background: lit ? "rgba(255,255,255,0.14)" : (lead ? (onBrand ? "rgba(255,255,255,0.92)" : accent) : "transparent"),
+                    border: `1px solid ${lit ? "rgba(255,255,255,0.5)" : (lead ? (onBrand ? "rgba(255,255,255,0.92)" : accent) : t.control.border)}`,
                     padding: "5px 9px", minWidth: 82, textAlign: "center", flexShrink: 0,
                   }}
                 >
@@ -107,15 +126,15 @@ export function ProgressTrackList({ theme, title = "Fleet Utilisation by Tail", 
 
                 <div style={{ flex: 1, minWidth: 0, position: "relative", height: PLANE_BOX }}>
                   {/* asphalt */}
-                  <div style={{ position: "absolute", left: 0, right: 0, top: (PLANE_BOX - TRACK_H) / 2, height: TRACK_H, background: lit ? "rgba(255,255,255,0.22)" : (t.mode === "light" ? "#f1f5f9" : "rgba(255,255,255,0.06)") }} />
+                  <div style={{ position: "absolute", left: 0, right: 0, top: (PLANE_BOX - TRACK_H) / 2, height: TRACK_H, background: lit ? "rgba(255,255,255,0.22)" : (onBrand ? "rgba(15,23,42,0.18)" : t.mode === "light" ? "#f1f5f9" : "rgba(255,255,255,0.06)") }} />
                   {/* rolled portion */}
-                  <div style={{ position: "absolute", left: 0, width: `${frac * 100}%`, top: (PLANE_BOX - TRACK_H) / 2, height: TRACK_H, background: lit ? "#fff" : col, opacity: lit ? 0.16 : (lead ? 0.18 : 0.11) }} />
+                  <div style={{ position: "absolute", left: 0, width: `${frac * 100}%`, top: (PLANE_BOX - TRACK_H) / 2, height: TRACK_H, background: lit ? "#fff" : brandRail, opacity: lit ? 0.2 : (onBrand ? 0.9 : lead ? 0.18 : 0.11) }} />
                   {/* threshold bars */}
                   {[0, 1, 2, 3].map((k) => (
                     <div key={k} style={{ position: "absolute", left: 2 + k * 2.6, top: (PLANE_BOX - TRACK_H) / 2 + 2.5, width: 1.2, height: TRACK_H - 5, background: lit ? "rgba(255,255,255,0.75)" : t.text.muted, opacity: 0.55 }} />
                   ))}
                   {/* centreline: solid behind the aircraft, dashed ahead */}
-                  <div style={{ position: "absolute", left: 10, width: `calc(${frac * 100}% - 10px)`, top: PLANE_BOX / 2 - 0.75, height: 1.5, background: lit ? "#fff" : col }} />
+                  <div style={{ position: "absolute", left: 10, width: `calc(${frac * 100}% - 10px)`, top: PLANE_BOX / 2 - 0.75, height: 1.5, background: lit ? "#fff" : onBrand ? (i < 2 ? "#334155" : "#64748b") : col }} />
                   <div
                     style={{
                       position: "absolute", left: `${frac * 100}%`, right: 4, top: PLANE_BOX / 2 - 0.5, height: 1,
@@ -134,7 +153,7 @@ export function ProgressTrackList({ theme, title = "Fleet Utilisation by Tail", 
                     <g transform={`scale(1.55)`}>
                       <path
                         d={PLANE}
-                        fill={lit ? "#ffffff" : col}
+                        fill={lit ? "#ffffff" : (onBrand ? (i < 2 ? "#0f172a" : "#334155") : col)}
                         stroke={lit ? "rgba(0,0,0,0.35)" : "none"}
                         strokeWidth={lit ? 1.2 : 0}
                         strokeLinejoin="round"

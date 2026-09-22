@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { resolveTheme, arcPath, polar } from "./theme";
 import { ChartCard, ChartTooltip, Stat } from "./chrome";
 import { useMeasuredBox } from "./useMeasuredBox";
+import { compactNumber } from "./format";
 
 /**
  * DonutChart — segmented ring with rounded caps and a centered total.
@@ -159,7 +160,7 @@ const DonutChart = memo(
     compact: compactCard = false,
   }) => {
     const t = resolveTheme(theme, "dark");
-    const fmt = formatValue || ((v) => Number(v || 0).toLocaleString("en-US"));
+    const fmt = formatValue || compactNumber;
     const r = C - thickness / 2 - 6;
 
     // resolve a stable color per segment (by index, like the original)
@@ -335,6 +336,8 @@ const DonutChart = memo(
         className={className}
         radius={radius}
         compact={compactCard}
+        floatingHeader
+        headline={{ value: total ?? fmt(sum) }}
         footer={compact || isLandscape ? null : <ScrollLegend theme={t} items={legendItems} onToggle={toggle} />}
         footerDetailed={<ScrollLegend theme={t} items={legendItems} onToggle={toggle} />}
       >
@@ -380,10 +383,7 @@ const DonutChart = memo(
                     );
                   })}
 
-                  <text x={C} y={C - 2} textAnchor="middle" fontSize="34" fontWeight="800" fill={t.text.primary}>
-                    {total ?? fmt(sum)}
-                  </text>
-                  <text x={C} y={C + 20} textAnchor="middle" fontSize="12" fontWeight="500" fill={t.text.muted}>
+                  <text x={C} y={C + 4} textAnchor="middle" fontSize="13" fontWeight="700" fill={t.text.muted}>
                     {centerLabel}
                   </text>
                 </svg>

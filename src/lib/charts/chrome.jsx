@@ -99,9 +99,14 @@ if (typeof document !== "undefined" && !document.getElementById("cc-css")) {
        their own body div instead of relying on this shared rule. A no-op for
        svg-based fill charts: their <svg> is separately forced to height:100%
        below and exactly fills this box, so nothing ever overflows. */
-    .cc-body.cc-fluid > div{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+    /* Only a component's single layout root owns the available height.
+       Applying height:100% to every direct sibling made headline + plot
+       combinations each claim the full body and pushed charts downward. */
+    .cc-body.cc-fluid > div:only-child{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
     .cc-body.cc-fluid svg{max-height:none!important;height:100%!important;width:100%;flex:1;min-height:0}
     .cc-body svg path,.cc-body svg rect,.cc-body svg circle,.cc-body svg line,.cc-body svg polygon{transition:opacity .2s ease,transform .2s ease}
+    .cc-card,.cc-card *{scrollbar-width:none;-ms-overflow-style:none}
+    .cc-card::-webkit-scrollbar,.cc-card *::-webkit-scrollbar{display:none;width:0;height:0}
     .cc-modal-body svg{max-height:38vh!important;width:100%!important}
     .cc-menu{animation:ccMenu .14s ease both}
     @keyframes ccMenu{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
@@ -394,7 +399,7 @@ export const ChartCard = memo(
     // Falls back to the theme's own radius when omitted.
     const cardRadius = radius != null ? radius : t.radius;
     const [expanded, setExpanded] = useState(false);
-    const [hover, setHover] = useState(false);
+    const [cardActive, setCardActive] = useState(false);
     useEffect(() => {
       if (!expanded) return undefined;
       const onKey = (e) => e.key === "Escape" && setExpanded(false);
@@ -460,7 +465,16 @@ export const ChartCard = memo(
     // own size, so revealed buttons stay visually secondary to the number
     // instead of competing with it at full size.
     const floatingControlsCluster = (
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+      <div
+        className="cc-hover-controls"
+        style={{
+          display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
+          opacity: cardActive ? 1 : smallChart ? 0 : 0.3,
+          transform: cardActive ? "translateY(0)" : "translateY(-2px)",
+          pointerEvents: cardActive ? "auto" : "none",
+          transition: "opacity .16s ease, transform .16s ease",
+        }}
+      >
         {headerRight ?? <HeaderControls theme={t} controls={controls} onControl={onControl} small density="small" />}
         {expandable && (
           <Pill theme={t} iconOnly density="small" ariaLabel="Expand chart" onClick={() => setExpanded(true)}>
@@ -470,8 +484,31 @@ export const ChartCard = memo(
       </div>
     );
 
-    const Header = (title || subtitle || (!floatingHeader && (controls || headerRight || expandable))) ? (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14, paddingRight: floatingHeader ? (headline?.legend ? 150 : 84) : 0 }}>
+    const FloatingValue = floatingHeader && headline ? (
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexShrink: 0 }}>
+        <span style={{ fontSize: smallChart ? 22 : 31, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1, color: t.text.primary }}>
+          {headline.value}
+        </span>
+        {headline.change != null && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: headline.change >= 0 ? "#10B981" : "#f43f5e" }}>
+            {headline.change >= 0 ? "+" : ""}{headline.change}%
+          </span>
+        )}
+      </div>
+    ) : null;
+
+    const FloatingRight = floatingHeader && (headline || controls || headerRight || expandable) ? (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+          {(controls || headerRight || expandable) && floatingControlsCluster}
+          {FloatingValue}
+        </div>
+        {headline?.legend && <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", maxWidth: "min(60vw, 480px)" }}>{headline.legend}</div>}
+      </div>
+    ) : null;
+
+    const Header = (title || subtitle || floatingHeader || controls || headerRight || expandable) ? (
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: headerMarginBottom }}>
         <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
           {icon && (
             <span style={{ display: "flex", alignItems: "center", flexShrink: 0, color: iconColor || t.accent }}>
@@ -489,12 +526,16 @@ export const ChartCard = memo(
             {subtitle && <div style={{ ...SUBTITLE_STYLE(t), marginTop: 1 }}>{subtitle}</div>}
           </div>
         </div>
-        {!floatingHeader && controlsCluster}
+        {floatingHeader ? FloatingRight : controlsCluster}
       </div>
     ) : null;
 
     const glass = {
-      width: "100%", maxWidth: width, boxSizing: "border-box",
+      // A fill card belongs to its container, not to the component's legacy
+      // default pixel width. Keeping `maxWidth: width` here caused wide grid
+      // tracks to contain a narrow, left-aligned card and created large dead
+      // gaps between otherwise-correct CSS grid columns.
+      width: "100%", maxWidth: fluid ? "none" : width, boxSizing: "border-box",
       background: t.surface, backdropFilter: t.backdrop, WebkitBackdropFilter: t.backdrop,
       border: `1px solid ${t.border}`, borderRadius: cardRadius, boxShadow: "none",
       padding: t.pad, color: t.text.primary,
@@ -503,55 +544,14 @@ export const ChartCard = memo(
     return (
       <div
         className={`cc-card ${className}`}
+        onMouseEnter={() => setCardActive(true)}
+        onMouseLeave={() => setCardActive(false)}
+        onFocusCapture={() => setCardActive(true)}
+        onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setCardActive(false);
+        }}
         style={{ ...glass, position: "relative", display: "flex", flexDirection: "column", minHeight: 0, height: "100%", ...style }}
-        onMouseEnter={floatingHeader ? () => setHover(true) : undefined}
-        onMouseLeave={floatingHeader ? () => setHover(false) : undefined}
       >
-        {floatingHeader && (headline || controls || headerRight || expandable) && (
-          <div style={{ position: "absolute", top: 10, right: 12, zIndex: 10, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {headline && (
-                <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                  <span
-                    style={{
-                      fontSize: hover ? 18 : 31, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1,
-                      color: t.text.primary, transition: "font-size 0.25s cubic-bezier(.4,0,.2,1)",
-                    }}
-                  >
-                    {headline.value}
-                  </span>
-                  {headline.change != null && (
-                    <span
-                      style={{
-                        fontSize: hover ? 10 : 12, fontWeight: 700,
-                        color: headline.change >= 0 ? "#10B981" : "#f43f5e",
-                        transition: "font-size 0.25s ease",
-                      }}
-                    >
-                      {headline.change >= 0 ? "+" : ""}{headline.change}%
-                    </span>
-                  )}
-                </div>
-              )}
-              {(controls || headerRight || expandable) && (
-                <div
-                  style={{
-                    display: "flex", alignItems: "center", gap: 8, overflow: "hidden",
-                    opacity: hover ? 1 : 0, maxWidth: hover ? 200 : 0,
-                    pointerEvents: hover ? "auto" : "none",
-                    transition: "opacity 0.2s ease, max-width 0.25s cubic-bezier(.4,0,.2,1)",
-                  }}
-                >
-                  {floatingControlsCluster}
-                </div>
-              )}
-            </div>
-            {/* optional supplementary line under the value — e.g. a legend
-                for a 2-series comparison — stays put, doesn't shrink with
-                the number since it's secondary to it either way. */}
-            {headline?.legend && <div style={{ display: "flex", alignItems: "center", maxWidth: "min(60vw, 480px)" }}>{headline.legend}</div>}
-          </div>
-        )}
         {Header}
         {!compactHeadline && !floatingHeader && Headline}
         <div

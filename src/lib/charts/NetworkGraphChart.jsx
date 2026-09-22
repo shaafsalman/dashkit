@@ -2,6 +2,7 @@ import React, { useMemo, useState, memo, useCallback } from "react";
 import { resolveTheme } from "./theme";
 import { ChartCard, ChartTooltip } from "./chrome";
 import { useMeasuredBox } from "./useMeasuredBox";
+import { compactNumber } from "./format";
 
 /**
  * NetworkGraphChart — directed route network for a hub-and-spoke carrier.
@@ -75,7 +76,8 @@ const NetworkGraphChart = memo(
     compact = false,
   }) => {
     const t = resolveTheme(theme, "light");
-    const fmt = formatValue || ((v) => Number(v || 0).toLocaleString("en-US"));
+    const labelHalo = t.mode === "light" ? "#ffffff" : HALO;
+    const fmt = formatValue || compactNumber;
 
     const [hoverNode, setHoverNode] = useState(null);
     const [hoverEdge, setHoverEdge] = useState(-1);
@@ -380,8 +382,9 @@ const NetworkGraphChart = memo(
                 fontFamily={SANS}
                 fontSize={11.5}
                 fontWeight={700}
-                stroke={HALO}
-                strokeWidth={3}
+                fill={labelHalo}
+                stroke={labelHalo}
+                strokeWidth={4}
                 strokeLinejoin="round"
                 pointerEvents="none"
               >
@@ -426,7 +429,7 @@ const NetworkGraphChart = memo(
       return (
         <div style={{ width: RAIL_W, flexShrink: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: t.text.muted, paddingBottom: 6, borderBottom: `1px solid ${t.control.border}` }}>
-            Airports by volume
+            Nodes by volume
           </div>
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
             {rows.map((r) => {
@@ -533,12 +536,12 @@ const NetworkGraphChart = memo(
               </span>
             ) : (
               <>
-                {hub && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: HUB }} />Hub</span>}
-                <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: NODE }} />Airport</span>
-                {hub && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 12, height: 2, background: NODE }} />Hub route</span>}
-                <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 12, height: 2, background: EDGE_PEER }} />Direct route</span>
-                <span>Thickness = passengers</span>
-                <span style={{ color: HOT }}>Busiest route</span>
+                {hub && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: HUB }} />Primary node</span>}
+                <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: NODE }} />Node</span>
+                {hub && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 12, height: 2, background: NODE }} />Primary link</span>}
+                <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 12, height: 2, background: EDGE_PEER }} />Direct link</span>
+                <span>Thickness = volume</span>
+                <span style={{ color: HOT }}>Highest-volume link</span>
               </>
             )}
           </div>
@@ -561,6 +564,8 @@ const NetworkGraphChart = memo(
         className={className}
         radius={radius}
         compact={compact}
+        floatingHeader
+        headline={{ value: fmt(netSum) }}
       >
         {() => body()}
       </ChartCard>

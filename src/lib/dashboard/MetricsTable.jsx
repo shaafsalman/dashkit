@@ -6,9 +6,13 @@ import { MONO, NEG, compact, Empty } from "./_shared.jsx";
  * Flights, revenue and on-time performance per departure station — the three
  * per-station series the API returns, finally on the same row.
  * ────────────────────────────────────────────────────────────────────────── */
-export function MetricsTable({ theme, title = "Station Performance", icon, iconColor, stations = [], formatMoney }) {
+export function MetricsTable({
+  theme, title = "Metrics", icon, iconColor, stations = [], formatMoney,
+  nameLabel = "Item", primaryLabel = "Volume", secondaryLabel = "Value", scoreLabel = "Score",
+}) {
   const t = resolveTheme(theme, "light");
   const accent = iconColor || t.accent;
+  const onBrand = String(t.text.primary).toLowerCase() === "#ffffff";
   const money = formatMoney || ((n) => `$${compact(n)}`);
 
   const rows = useMemo(
@@ -41,13 +45,13 @@ export function MetricsTable({ theme, title = "Station Performance", icon, iconC
     <ChartCard theme={t} size="fill" width="100%" expandable controls={[]} title={title} icon={icon} iconColor={iconColor}>
       {() => (
         <div style={{ height: "100%", minHeight: 0, overflowY: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, border: `1px solid ${t.control.border}`, borderRadius: 10, overflow: "hidden" }}>
             <thead>
-              <tr style={{ background: t.mode === "light" ? "#f8fafc" : "rgba(255,255,255,0.05)" }}>
-                <th style={{ ...th, textAlign: "left" }}>Station</th>
-                <th style={th}>Flights</th>
-                <th style={th}>Revenue</th>
-                <th style={th}>On-time</th>
+              <tr style={{ background: onBrand ? "rgba(15,23,42,.16)" : t.mode === "light" ? "#f8fafc" : "rgba(255,255,255,0.05)" }}>
+                <th style={{ ...th, textAlign: "left" }}>{nameLabel}</th>
+                <th style={th}>{primaryLabel}</th>
+                <th style={th}>{secondaryLabel}</th>
+                <th style={th}>{scoreLabel}</th>
               </tr>
             </thead>
             <tbody>
@@ -60,8 +64,8 @@ export function MetricsTable({ theme, title = "Station Performance", icon, iconC
                   <td style={{ ...td, ...MONO, fontWeight: 600 }}>{money(s.revenue)}</td>
                   <td style={td}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 7, justifyContent: "flex-end" }}>
-                      <span style={{ width: 40, height: 4, background: t.grid, flexShrink: 0 }}>
-                        <span style={{ display: "block", width: `${Math.min(100, s.otp)}%`, height: "100%", background: s.otp >= 75 ? accent : NEG }} />
+                      <span style={{ width: 40, height: 4, background: onBrand ? "rgba(15,23,42,.22)" : t.grid, flexShrink: 0, borderRadius: 99, overflow: "hidden" }}>
+                        <span style={{ display: "block", width: `${Math.min(100, s.otp)}%`, height: "100%", background: onBrand ? (s.otp >= 75 ? "#E2E8F0" : "#94A3B8") : s.otp >= 75 ? accent : NEG }} />
                       </span>
                       <span style={{ ...MONO, fontSize: 12, fontWeight: 700, minWidth: 30 }}>{Math.round(s.otp)}%</span>
                     </span>

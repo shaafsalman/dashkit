@@ -124,8 +124,6 @@ const LABEL_FONT_SIZE_SCROLL = "10px";
 const AXIS_FONT_SIZE = 12;
 const AXIS_FONT_SIZE_SCROLL = 8;
 
-const SCROLL_THRESHOLD_MOBILE = 4;
-const SCROLL_THRESHOLD_DESKTOP = 12;
 const VERTICAL_SCROLL_THRESHOLD = 12;
 
 const INVERSE_MIN_HEIGHT = 300;
@@ -802,14 +800,17 @@ const VerticalBarView = ({
     return Math.min(calculatedHeight, INVERSE_MAX_HEIGHT);
   };
 
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  // Overflow is a property of this component's box, not of the browser
+  // viewport. A 300px card inside a desktop dashboard needs the same density
+  // behavior as a 300px card on a phone.
+  const responsivePlotWidth = Math.max((measuredWidth || 400) - 40, 160);
+  const categoryCapacity = Math.max(3, Math.floor(responsivePlotWidth / 64));
   const shouldScrollVertical =
     isInverse && dataWithMissingYears.length > VERTICAL_SCROLL_THRESHOLD;
   const shouldScrollHorizontal =
     !isInverse &&
     !isMonthly &&
-    dataWithMissingYears.length >
-      (isMobile ? SCROLL_THRESHOLD_MOBILE : SCROLL_THRESHOLD_DESKTOP);
+    dataWithMissingYears.length > categoryCapacity;
   const inverseHeight = shouldScrollVertical
     ? INVERSE_MAX_HEIGHT
     : calculateInverseHeight();
@@ -818,7 +819,7 @@ const VerticalBarView = ({
   // drew the same skinny bars as one in a 3-column tile. Divide the REAL plot
   // width instead (minus the axis gutter) so bars grow with the tile; the
   // existing MIN/MAX clamps still bound the result.
-  const plotWidth = Math.max((measuredWidth || 400) - 40, 160);
+  const plotWidth = responsivePlotWidth;
 
   const calculateBarSize = () => {
     if (isCombinedMode) {
@@ -875,12 +876,15 @@ const VerticalBarView = ({
 
   const calculateChartWidth = () => {
     if (!shouldScrollHorizontal) return "100%";
-    const barWidth = calculateBarSize();
-    const minSpacing = 32;
-    const totalWidth =
-      dataWithMissingYears.length * (barWidth + minSpacing) + 200;
-    return Math.max(1200, totalWidth);
+    // One readable category slot per item. The old 1200px hard floor made a
+    // six-item chart comically wide; the new width grows only as much as the
+    // actual category count requires.
+    return Math.max(measuredWidth || 0, dataWithMissingYears.length * 64 + 56);
   };
+
+  const categoryTickInterval = isMonthly
+    ? Math.max(0, Math.ceil(dataWithMissingYears.length / categoryCapacity) - 1)
+    : 0;
 
   // Shared with AreaChartView/LineChartView via the `maxValue` prop
   // (computed once in RankedDataWidget's sharedMaxValue) so the Y-axis stops
@@ -1994,7 +1998,7 @@ const VerticalBarView = ({
             style={{
               width: calculateChartWidth(),
               height: "100%",
-              minWidth: shouldScrollHorizontal ? "1200px" : "auto",
+              minWidth: 0,
             }}
           >
             <ResponsiveContainer width="100%" height="100%">
@@ -2039,7 +2043,7 @@ const VerticalBarView = ({
                     textAnchor: "middle",
                   }}
                   height={shouldScrollHorizontal ? 25 : 35}
-                  interval={0}
+                  interval={categoryTickInterval}
                 />
 
                 <YAxis

@@ -11,6 +11,7 @@ import { MORD, MONO, NEG, polarPt, shortMonth, compact, Empty } from "./_shared.
 export function RadialBladeChart({ theme, title = "Fuel Burn per Flight", icon, iconColor, months = [], unit = "L" }) {
   const t = resolveTheme(theme, "light");
   const accent = iconColor || "#F59E0B";
+  const onBrand = String(t.text.primary).toLowerCase() === "#ffffff";
   const [hover, setHover] = useState(null);
 
   const data = useMemo(() => {
@@ -80,8 +81,8 @@ export function RadialBladeChart({ theme, title = "Fuel Burn per Flight", icon, 
           <svg viewBox={`0 0 ${S_W} ${S_H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "100%" }} role="img" aria-label="Fuel burn per flight by month">
             <defs>
               <linearGradient id="ff-hub" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#2E1065" />
-                <stop offset="100%" stopColor="#7C3AED" />
+                <stop offset="0%" stopColor={onBrand ? (t.series?.at(-1) || "#334155") : "#2E1065"} />
+                <stop offset="100%" stopColor={onBrand ? (t.series?.at(-2) || "#64748B") : "#7C3AED"} />
               </linearGradient>
             </defs>
             {data.blades.map((b, i) => {
@@ -93,6 +94,9 @@ export function RadialBladeChart({ theme, title = "Fuel Burn per Flight", icon, 
               const rOut = R0 + (has ? Math.max(frac, 0.1) : 0.045) * (R1 - R0);
               const isPeak = data.peak && b.label === data.peak.label;
               const lit = hover === i;
+              const bladeColor = onBrand
+                ? (t.series[i % t.series.length] || "#cbd5e1")
+                : isPeak ? NEG : accent;
 
               const [ix0, iy0] = polarPt(CX, CY, R0, a0);
               const [ix1, iy1] = polarPt(CX, CY, R0, a1);
@@ -112,14 +116,14 @@ export function RadialBladeChart({ theme, title = "Fuel Burn per Flight", icon, 
                 <g key={b.label} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
                   <path
                     d={`M ${ix0},${iy0} A ${R0} ${R0} 0 0 1 ${ix1},${iy1} L ${ox1},${oy1} A ${rOut} ${rOut} 0 0 0 ${ox0},${oy0} Z`}
-                    fill={!has ? t.grid : isPeak ? NEG : accent}
-                    opacity={!has ? 1 : lit ? 1 : isPeak ? 0.9 : 0.34 + frac * 0.4}
+                    fill={!has ? t.grid : bladeColor}
+                    opacity={!has ? 1 : lit ? 1 : onBrand ? 0.92 : isPeak ? 0.9 : 0.34 + frac * 0.4}
                     stroke={lit ? t.text.primary : "none"}
                     strokeWidth="1"
                   />
                   <text
                     x={lx} y={ly} textAnchor={anchor} dominantBaseline="central"
-                    style={{ ...MONO, fontSize: lit || isPeak ? 28 : 22, fontWeight: lit || isPeak ? 700 : 600, fill: !has ? t.text.muted : lit ? t.text.primary : isPeak ? NEG : t.text.secondary }}
+                    style={{ ...MONO, fontSize: lit || isPeak ? 28 : 22, fontWeight: lit || isPeak ? 700 : 600, fill: !has ? t.text.muted : onBrand ? t.text.primary : lit ? t.text.primary : isPeak ? NEG : t.text.secondary }}
                   >
                     {b.label}
                   </text>

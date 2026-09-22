@@ -185,6 +185,8 @@ const RadialBarsChart = memo(
         size={size}
         expandable={expandable}
         className={className}
+        floatingHeader
+        headline={{ value: `${Math.round(overallStats?.avg || 0)}%` }}
         footer={<Legend theme={t} items={legendItems} swatch="dot" onToggle={toggle} />}
         footerDetailed={<Legend theme={t} items={legendItems} swatch="dot" onToggle={toggle} />}
       >

@@ -4,7 +4,7 @@ import RibbonStackChart from "./RibbonStackChart";
 /**
  * BalanceStatsChart — "Balance Statistics" preset.
  * Thin wrapper over the generalized RibbonStackChart: light theme, $-axis with
- * dashed gridlines, bottom-left "Total Balance" headline, a "Monthly" dropdown,
+ * dashed gridlines, a fixed top-right headline, a "Monthly" dropdown,
  * and bars on alternate periods (the ribbon flows through the gaps).
  */
 
@@ -22,14 +22,14 @@ const BALANCE_DATA = [
   { label: "May", values: { low: 62000, mid: 30000, high: 16000 } },
 ];
 
-const BalanceStatsChart = ({ size = "l", ...props }) => (
+const BalanceStatsChart = ({ size = "l", series = BALANCE_SERIES, ...props }) => (
   <RibbonStackChart
     title="Balance Statistics"
     theme="light"
-    series={BALANCE_SERIES}
+    series={series}
     data={BALANCE_DATA}
     total={50847}
-    headlinePosition="bottom"
+    headlinePosition="top-right"
     headlineLabel="Total Balance"
     currency="$"
     decimals={0}
@@ -38,6 +38,7 @@ const BalanceStatsChart = ({ size = "l", ...props }) => (
     axisFormat={(v) => `$${Math.round(v / 1000)}K`}
     showLegend={false}
     showBarLabels={false}
+    floatingHeader
     width={760}
     size={size}
     {...props}

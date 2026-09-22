@@ -1,6 +1,7 @@
 import React, { useMemo, useState, memo } from "react";
 import { resolveTheme } from "./theme";
 import { ChartCard } from "./chrome";
+import { compactNumber } from "./format";
 
 const DEFAULT_ITEMS = [
   { label: "MGQ–NBO", value: 6700 },
@@ -37,7 +38,7 @@ const BarRankingChart = memo(
     compact = false,
   }) => {
     const t = resolveTheme(theme, "light");
-    const fmt = formatValue || ((v) => Number(v || 0).toLocaleString("en-US"));
+    const fmt = formatValue || compactNumber;
     const [sort, setSort] = useState("desc");
     const [hover, setHover] = useState(-1);
 
@@ -73,6 +74,8 @@ const BarRankingChart = memo(
         className={className}
         radius={radius}
         compact={compact}
+        floatingHeader
+        headline={{ value: fmt(sorted.reduce((sum, item) => sum + Number(item.value || 0), 0)) }}
       >
         {({ detailed }) => {
           const rows = detailed ? sorted : sorted.slice(0, topN);
@@ -90,6 +93,8 @@ const BarRankingChart = memo(
                     style={{
                       display: "flex", alignItems: "center", gap: 10,
                       padding: "7px 6px",
+                      flex: size === "fill" && !detailed ? "1 1 0" : "0 0 auto",
+                      minHeight: size === "fill" && !detailed ? 48 : undefined,
                       borderBottom: i === rows.length - 1 ? "none" : `1px solid ${t.mode === "light" ? "rgba(15,23,42,0.05)" : "rgba(255,255,255,0.06)"}`,
                       background: on ? `${color}0c` : "transparent",
                       transition: "background .15s ease",

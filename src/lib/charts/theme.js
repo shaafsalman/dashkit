@@ -8,27 +8,72 @@
 
 import { isDarkMode } from "../../isDarkMode";
 
-export const lighten = (hex, amt) => {
-  const h = String(hex).replace("#", "");
-  const n = parseInt(h.length === 3 ? h.replace(/(.)/g, "$1$1") : h, 16);
-  const r = (n >> 16) & 255,
-    g = (n >> 8) & 255,
-    b = n & 255;
-  // Clamped to [0, 255]: without this, darken()-ing a channel that's already
-  // near 0 (e.g. amber's blue channel, 0x0B in #F59E0B) sends `mix` negative.
-  // (-18).toString(16) is the STRING "-12", not a valid two-digit hex pair —
-  // padStart doesn't fix a value that's already 3 characters — so it got
-  // spliced straight into the hex string as garbage (e.g. "#f492-12"), an
-  // invalid CSS color that every browser here was falling back to black for.
-  // That's what made every warm/yellow funnel band fade to black on its
-  // right edge instead of shading the color that was actually passed in.
-  const mix = (c) => Math.max(0, Math.min(255, Math.round(c + (255 - c) * amt)));
-  return `#${[mix(r), mix(g), mix(b)]
-    .map((c) => c.toString(16).padStart(2, "0"))
-    .join("")}`;
+export const lighten = (input, amt) => {
+  const source = String(input || "").trim();
+  let channels;
+  let alpha = null;
+  let output = "hex";
+
+  const hex = source.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (hex) {
+    let value = hex[1];
+    if (value.length === 3) value = value.replace(/(.)/g, "$1$1");
+    if (value.length === 8) {
+      alpha = value.slice(6);
+      value = value.slice(0, 6);
+    }
+    const n = parseInt(value, 16);
+    channels = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  } else {
+    const rgb = source.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
+    if (!rgb) return source;
+    channels = rgb.slice(1, 4).map(Number);
+    alpha = rgb[4] == null ? null : Number(rgb[4]);
+    output = "rgb";
+  }
+
+  // Positive values mix toward white; negative values mix toward black.
+  // Alpha is preserved, so translucent brand-series colors can be shaded
+  // without turning into invalid CSS (and therefore browser-fallback black).
+  const mix = (channel) => {
+    const next = amt >= 0
+      ? channel + (255 - channel) * amt
+      : channel * (1 + amt);
+    return Math.max(0, Math.min(255, Math.round(next)));
+  };
+  const [r, g, b] = channels.map(mix);
+  if (output === "rgb") return alpha == null ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  const body = [r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("");
+  return `#${body}${alpha || ""}`;
 };
 
 export const darken = (hex, amt) => lighten(hex, -amt);
+
+// Pick readable ink for a data fill. This is intentionally based on the fill
+// itself rather than the card mode: brand cards often contain both white and
+// charcoal marks at the same time, so a single card-wide text color cannot be
+// correct for every segment/cell.
+export const contrastingText = (input, light = "#ffffff", dark = "#0f172a") => {
+  const source = String(input || "").trim();
+  let rgb;
+  const hex = source.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (hex) {
+    let value = hex[1];
+    if (value.length === 3) value = value.replace(/(.)/g, "$1$1");
+    const n = parseInt(value.slice(0, 6), 16);
+    rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  } else {
+    const match = source.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+    if (!match) return light;
+    rgb = match.slice(1, 4).map(Number);
+  }
+  const linear = rgb.map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  return luminance > 0.42 ? dark : light;
+};
 
 // polar point (SVG y-down) and a sampled arc path — shared by radial charts.
 export const polar = (cx, cy, r, deg) => {
@@ -138,6 +183,7 @@ export const resolveTheme = (theme, fallbackMode = "dark") => {
     text: _text,
     control: _control,
     solid,
+    frame,
     ...structural
   } = theme;
   const resolved = {
@@ -147,13 +193,14 @@ export const resolveTheme = (theme, fallbackMode = "dark") => {
     control: base.control,
     series: theme.series || base.series,
   };
-  if (!solid) return resolved;
-  return {
+  if (!solid) return frame ? { ...resolved, border: frame.border ?? resolved.border } : resolved;
+  const solidResolved = {
     ...resolved,
     ...solid,
     text: { ...resolved.text, ...(solid.text || {}) },
     control: { ...resolved.control, ...(solid.control || {}) },
   };
+  return frame ? { ...solidResolved, border: frame.border ?? solidResolved.border } : solidResolved;
 };
 
 // Outer card style derived from the theme (used by ChartCard).

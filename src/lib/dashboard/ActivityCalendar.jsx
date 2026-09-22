@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ChartCard, resolveTheme } from "../charts";
-import { darken } from "../charts/theme";
+import { darken, contrastingText } from "../charts/theme";
 import { MORD, MONTH_FULL, DOW, MONO, compact, Empty } from "./_shared.jsx";
 
 /* ── ACTIVITY CALENDAR ─────────────────────────────────────────────────────────
@@ -11,6 +11,7 @@ import { MORD, MONTH_FULL, DOW, MONO, compact, Empty } from "./_shared.jsx";
 export function ActivityCalendar({ theme, title = "Flight Calendar", icon, iconColor, days = [], unitLabel = "flights" }) {
   const t = resolveTheme(theme, "light");
   const accent = iconColor || t.accent;
+  const onBrand = String(t.text.primary).toLowerCase() === "#ffffff";
 
   // Dates are parsed numerically, never through `new Date(string)`, so a
   // UTC-vs-local offset can't shift a flight onto the previous day.
@@ -129,7 +130,10 @@ export function ActivityCalendar({ theme, title = "Flight Calendar", icon, iconC
               // deepened" (e.g. a darker blue on a blue card) instead of an
               // unrelated near-black that clashes with whichever accent color
               // a given card is using.
-              const ringColor = darken(accent, 0.4);
+              const ringColor = onBrand ? "#334155" : darken(accent, 0.4);
+              const brandIndex = Math.min(t.series.length - 1, Math.max(0, Math.round((1 - intensity) * (t.series.length - 1))));
+              const cellFill = v > 0 ? (onBrand ? t.series[brandIndex] : accent) : (onBrand ? "rgba(255,255,255,.10)" : t.grid);
+              const cellInk = v > 0 ? contrastingText(cellFill) : t.text.muted;
               return (
                 <div
                   key={d}
@@ -160,8 +164,8 @@ export function ActivityCalendar({ theme, title = "Flight Calendar", icon, iconC
                   <div
                     style={{
                       position: "absolute", inset: 0,
-                      background: v > 0 ? accent : t.grid,
-                      opacity: v > 0 ? 0.28 + intensity * 0.72 : 1,
+                      background: cellFill,
+                      opacity: onBrand ? 1 : v > 0 ? 0.28 + intensity * 0.72 : 1,
                     }}
                   />
                   <span
@@ -169,10 +173,7 @@ export function ActivityCalendar({ theme, title = "Flight Calendar", icon, iconC
                       position: "relative",
                       ...MONO, fontSize: 10.5,
                       fontWeight: isBusiest || lit ? 700 : v > 0 ? 600 : 400,
-                      // White on any flight day regardless of intensity, light
-                      // grey on empty ones — a flat rule instead of flipping
-                      // between white/dark by intensity threshold.
-                      color: v > 0 ? "#fff" : "#a1a1aa",
+                      color: cellInk,
                     }}
                   >
                     {d}
@@ -195,8 +196,8 @@ export function ActivityCalendar({ theme, title = "Flight Calendar", icon, iconC
                     <span style={{ ...MONO, fontSize: 12, fontWeight: 700, color: t.text.primary }}>
                       {dow} {hoverDay} {MORD[mo - 1]}
                     </span>
-                    <span style={{ ...MONO, fontSize: 13, fontWeight: 700, color: v > 0 ? accent : t.text.muted }}>
-                      {v} {unitLabel}
+                    <span style={{ ...MONO, fontSize: 13, fontWeight: 700, color: v > 0 ? (onBrand ? t.text.primary : accent) : t.text.muted }}>
+                      {compact(v)} {unitLabel}
                     </span>
                     <span style={{ fontSize: 11, color: t.text.muted }}>
                       {v === 0 ? "no movements" : `${diff >= 0 ? "+" : "−"}${Math.abs(diff).toFixed(1)} vs daily avg`}
@@ -214,9 +215,9 @@ export function ActivityCalendar({ theme, title = "Flight Calendar", icon, iconC
                   <span style={{ fontSize: 11, color: t.text.muted }}>
                     Busiest {busiest.d ? `${busiest.d} ${MORD[mo - 1]}` : "—"}
                   </span>
-                  <span style={{ ...MONO, fontSize: 12, fontWeight: 700, color: t.text.primary }}>{busiest.v || "—"}</span>
+                  <span style={{ ...MONO, fontSize: 12, fontWeight: 700, color: t.text.primary }}>{busiest.v ? compact(busiest.v) : "—"}</span>
                   <span style={{ fontSize: 11, color: t.text.muted }}>
-                    · {(monthTotal / daysInMonth).toFixed(1)} / day avg
+                    · {compact(monthTotal / daysInMonth)} / day avg
                   </span>
                 </>
               );

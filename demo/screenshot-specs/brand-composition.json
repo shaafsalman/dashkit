@@ -1,0 +1,37 @@
+{
+  "component": "DonutChart",
+  "width": 1200,
+  "height": 560,
+  "pad": 28,
+  "bg": "#F4F7FB",
+  "props": {
+    "title": "Product mix",
+    "subtitle": "Share by workspace",
+    "total": "81.1K",
+    "centerLabel": "Total",
+    "size": "xl",
+    "width": 1200,
+    "segments": [
+      { "label": "Workspace", "value": 23800, "color": "#FFFFFF" },
+      { "label": "Automations", "value": 19400, "color": "#E2E8F0" },
+      { "label": "Reports", "value": 16700, "color": "#CBD5E1" },
+      { "label": "Integrations", "value": 12300, "color": "#94A3B8" },
+      { "label": "Developer API", "value": 8900, "color": "#334155" }
+    ],
+    "theme": {
+      "base": "solid",
+      "accent": "#3B82F6",
+      "series": ["#FFFFFF", "#E2E8F0", "#CBD5E1", "#94A3B8", "#64748B", "#334155"],
+      "radius": 20,
+      "frame": { "border": "rgba(255,255,255,.28)" },
+      "solid": {
+        "surface": "linear-gradient(145deg, #2563EB 0%, #3B82F6 55%, #60A5FA 100%)",
+        "border": "rgba(255,255,255,.28)",
+        "text": { "primary": "#FFFFFF", "secondary": "#E2E8F0", "muted": "#CBD5E1" },
+        "control": { "bg": "rgba(255,255,255,.08)", "border": "rgba(255,255,255,.24)", "text": "#FFFFFF", "hover": "rgba(255,255,255,.18)" },
+        "grid": "rgba(255,255,255,.16)",
+        "track": "rgba(15,23,42,.16)"
+      }
+    }
+  }
+}
