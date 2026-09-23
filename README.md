@@ -6,6 +6,7 @@ Production-ready React analytics components for dashboards, internal tools, and 
 [![Responsive](https://img.shields.io/badge/layout-responsive-3B82F6)](#responsive-by-contract)
 [![Themeable](https://img.shields.io/badge/theme-fully%20editable-10B981)](#theming)
 [![MCP ready](https://img.shields.io/badge/MCP-agent%20ready-76B900)](#agent-and-mcp-support)
+[![License: MIT](https://img.shields.io/badge/License-MIT-F6C344.svg)](LICENSE)
 
 Dashkit is a general-purpose component library with 38 charts, data cards, ranked views, and geographic visualizations. Every component follows a shared visual contract, accepts deterministic data, and is designed to remain readable across mobile, tablet, desktop, square, portrait, and wide containers.
 
@@ -238,3 +239,7 @@ node capture.mjs screenshot-specs/brand-composition.json ../docs/images/brand-co
 ```
 
 No chart screenshot is a mockup; every image is rendered from the library code in this repository.
+
+## License
+
+Dashkit is available under the [MIT License](LICENSE).

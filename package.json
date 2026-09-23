@@ -2,6 +2,7 @@
   "name": "dashkit",
   "version": "0.2.0",
   "private": true,
+  "license": "MIT",
   "description": "Standalone React dashboard component kit — charts (Recharts / Chart.js / ECharts), ranked-data widgets, gradient/solid stat cards, a themed-section system, and a geographic route map — extracted for reuse across projects.",
   "type": "module",
   "main": "src/index.js",
