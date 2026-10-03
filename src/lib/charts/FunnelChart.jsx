@@ -281,7 +281,9 @@ const FunnelChart = memo(
       }
       return (
         <div ref={boxRef} style={{ position: "relative", height: "100%", minHeight: 0, paddingTop: 8 }}>
-          {renderFunnel(box.width, Math.max(box.height - 8, 0), box.width < 190)}
+          {/* contentRect already excludes the paddingTop; subtracting it again shrank an
+              auto-height box by 8px on every observer tick until the chart vanished. */}
+          {renderFunnel(box.width, box.height, box.width < 190)}
           <ChartTooltip
             theme={t}
             visible={!!tip}
