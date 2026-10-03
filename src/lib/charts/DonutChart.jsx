@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useEffect, memo } from "react";
+import React, { useMemo, useState, useRef, useEffect, useCallback, memo } from "react";
 import { ChevronRight } from "lucide-react";
 import { resolveTheme, arcPath, polar } from "./theme";
 import { ChartCard, ChartTooltip, Stat } from "./chrome";
@@ -26,6 +26,7 @@ const SIZE = 220;
 const C = SIZE / 2;
 const DETAIL_MAX = 240; // cap the ring's rendered size in the expanded modal
 const LANDSCAPE_RATIO = 1.35; // width:height beyond which ring+legend go side-by-side
+const PORTRAIT_RATIO = 1.3; // ...and below which they stack again (hysteresis band)
 const LEGEND_GAP = 20;
 
 // single-row legend that scrolls horizontally instead of wrapping to more
@@ -224,8 +225,51 @@ const DonutChart = memo(
     // column layout from its aspect ratio, and ring-fit within whatever
     // portion of the box the ring gets. detailed (modal) mode: no
     // measurement needed, just cap at a fixed, reasonable size.
+    //
+    // The orientation decision must NOT depend on a box that the decision
+    // itself resizes: in portrait the legend is rendered as the card footer,
+    // BELOW the measured box, so it shrinks the box by its own height. Deciding
+    // on the raw box therefore oscillates forever in cells near the threshold
+    // (e.g. ~350x300: landscape -> legend removed -> box grows -> portrait ->
+    // legend added -> box shrinks -> landscape ...), pinning the main thread
+    // through ResizeObserver. Instead decide on the legend-independent height:
+    // the box plus the legend's measured height whenever the legend is shown.
     const [boxRef, measuredBox] = useMeasuredBox({ width: SIZE, height: SIZE });
-    const isLandscape = measuredBox.width > measuredBox.height * LANDSCAPE_RATIO;
+    const [legendH, setLegendH] = useState(null);
+    const legendObserver = useRef(null);
+    const legendRef = useCallback((el) => {
+      legendObserver.current?.disconnect();
+      legendObserver.current = null;
+      if (!el || typeof ResizeObserver === "undefined") return;
+      const ro = new ResizeObserver(() => {
+        const h = el.getBoundingClientRect().height;
+        if (h > 0) setLegendH(h);
+      });
+      ro.observe(el);
+      legendObserver.current = ro;
+    }, []);
+    useEffect(() => () => legendObserver.current?.disconnect(), []);
+    const [isLandscape, setIsLandscape] = useState(false);
+    const legendShown = !compact && !isLandscape;
+    // Re-decide only when a new measurement arrives (not on every render):
+    // right after a flip the box is still the pre-flip measurement, and
+    // re-deciding against it would undo the flip before the observer reports.
+    const legendShownRef = useRef(legendShown);
+    legendShownRef.current = legendShown;
+    const landscapeRef = useRef(isLandscape);
+    landscapeRef.current = isLandscape;
+    useEffect(() => {
+      let fullHeight = measuredBox.height;
+      if (legendShownRef.current) {
+        // Portrait legend not measured yet: hold the current layout.
+        if (legendH == null) return;
+        fullHeight += legendH;
+      }
+      // Hysteresis absorbs sub-pixel differences between the box and legend
+      // measurements for cells sitting right on the threshold.
+      const ratio = landscapeRef.current ? PORTRAIT_RATIO : LANDSCAPE_RATIO;
+      setIsLandscape(measuredBox.width > fullHeight * ratio);
+    }, [measuredBox, legendH]);
     const fitSize = isLandscape
       ? Math.max(0, Math.min(measuredBox.height, (measuredBox.width - LEGEND_GAP) * 0.5))
       : Math.max(0, Math.min(measuredBox.width, measuredBox.height));
@@ -338,7 +382,11 @@ const DonutChart = memo(
         compact={compactCard}
         floatingHeader
         headline={{ value: total ?? fmt(sum) }}
-        footer={compact || isLandscape ? null : <ScrollLegend theme={t} items={legendItems} onToggle={toggle} />}
+        footer={legendShown ? (
+          <div ref={legendRef} style={{ display: "flow-root", flexShrink: 0 }}>
+            <ScrollLegend theme={t} items={legendItems} onToggle={toggle} />
+          </div>
+        ) : null}
         footerDetailed={<ScrollLegend theme={t} items={legendItems} onToggle={toggle} />}
       >
         {({ detailed }) => {
