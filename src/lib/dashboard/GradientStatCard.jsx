@@ -1,5 +1,9 @@
 import { ChartCard, resolveTheme } from "../charts";
+import { useRef } from "react";
 import { useMeasuredBox, MONO, compact, GRADIENTS } from "./_shared.jsx";
+
+const SHORT_ENTER = 250; // become "short" below this measured height...
+const SHORT_EXIT = 262; // ...and only leave it above this one
 
 export function GradientStatCard({
   gradient = "emerald", label, value, caption, icon, pills = [], bars = [], formatBarValue,
@@ -15,7 +19,14 @@ export function GradientStatCard({
   // already does that, with visible labels, and can't develop that class of
   // bug because nothing on this card floats except the value.
   const [cardRef, card] = useMeasuredBox({ width: 320, height: 240 });
-  const short = card.height < 250;
+  // `short` changes this element's own padding, and the observer reports its
+  // content box — so with border-box sizing, flipping `short` moves the
+  // measured height by 2×Δpad and can flip it straight back (an endless
+  // ResizeObserver loop for parents ~274–282px tall). A hysteresis band wider
+  // than that swing keeps the decision from feeding itself.
+  const shortRef = useRef(false);
+  const short = card.height < (shortRef.current ? SHORT_EXIT : SHORT_ENTER);
+  shortRef.current = short;
   const barMax = bars.reduce((m, b) => Math.max(m, Number(b.value) || 0), 1);
   const barFmt = formatBarValue || compact;
   const hasBreakdown = breakdown.length > 0;

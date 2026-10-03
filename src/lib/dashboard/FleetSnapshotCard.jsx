@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Plane } from "lucide-react";
 import { ChartCard, resolveTheme } from "../charts";
 import { useMeasuredBox, MONO, GRADIENTS } from "./_shared.jsx";
+
+const SHORT_ENTER = 250; // become "short" below this measured height...
+const SHORT_EXIT = 262; // ...and only leave it above this one
 
 /* ── FLEET SNAPSHOT ─────────────────────────────────────────────────────────
  * Purpose-built fleet overview tile: aircraft count floating top-right, a
@@ -16,7 +19,14 @@ export function FleetSnapshotCard({
 }) {
   const [cardRef, card] = useMeasuredBox({ width: 320, height: 240 });
   const [hover, setHover] = useState(null);
-  const short = card.height < 250;
+  // `short` changes this element's own padding, and the observer reports its
+  // content box — so with border-box sizing, flipping `short` moves the
+  // measured height by 2×Δpad and can flip it straight back (an endless
+  // ResizeObserver loop for parents ~274–278px tall). A hysteresis band wider
+  // than that swing keeps the decision from feeding itself.
+  const shortRef = useRef(false);
+  const short = card.height < (shortRef.current ? SHORT_EXIT : SHORT_ENTER);
+  shortRef.current = short;
   const max = utilisation.reduce((m, b) => Math.max(m, Number(b.value) || 0), 1);
   const pad = short ? 12 : 14;
   return (
