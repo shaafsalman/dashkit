@@ -161,6 +161,26 @@ const brandTheme = {
 
 The demo also includes electric blue, emerald, aqua, violet, amber, and rose presets. All six series colors remain editable, including on brand surfaces.
 
+### Tooltips
+
+By default, tooltips take their colors from the resolved theme. Brand (`solid`) cards reuse the brand surface. Other cards use a light or dark glass, whichever contrasts with `text.primary`. To set the colors yourself, pass `theme.tooltip`:
+
+```jsx
+const theme = {
+  tooltip: {
+    bg: "rgba(24, 24, 27, 0.94)",     // any CSS background, including gradients
+    border: "rgba(255, 255, 255, 0.12)",
+  },
+};
+```
+
+### Dark mode and color parsing
+
+Dashkit switches to dark mode when `<html>` has the `dark` class (Tailwind's `darkMode: "class"` convention). If your app marks dark mode another way, such as `data-theme`, pass `theme.tooltip` and `theme.solid` explicitly so colors don't depend on that check.
+
+Color helpers (`contrastingText`, `lighten`, `parseColor`, `relativeLuminance`) accept hex, legacy and CSS Color 4 `rgb()`/`hsl()` (including `rgb(250 250 250 / 0.5)`), `color(srgb …)`, `color(srgb-linear …)`, `oklab()` and `oklch()`. Any other color the browser understands, such as named colors or `lab()`, is resolved by drawing it on a canvas. That means values from `getComputedStyle` work as-is.
+
+
 ## Component Studio
 
 The Studio is a live component workbench rather than a static gallery. It includes:

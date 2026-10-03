@@ -5,6 +5,7 @@ import {
   ArrowUp, ArrowDown, Info, Users, Maximize2, X, Check, Download,
 } from "lucide-react";
 import { useMeasuredBox } from "./useMeasuredBox";
+import { tooltipColors } from "./theme";
 
 /**
  * Shared, theme-driven chrome for the chart library:
@@ -317,6 +318,7 @@ ChangePill.displayName = "ChangePill";
 /* consistent tooltip — charts render this inside a position:relative wrapper */
 export const ChartTooltip = memo(({ theme: t, left, top, title, rows = [], visible, flip = false }) => {
   if (!visible) return null;
+  const tip = tooltipColors(t);
   return (
     <div
       style={{
@@ -325,9 +327,9 @@ export const ChartTooltip = memo(({ theme: t, left, top, title, rows = [], visib
         // past the card edge and it drew clipped.
         position: "absolute", left, top, transform: flip ? "translate(-50%, 12px)" : "translate(-50%, -100%)",
         pointerEvents: "none", zIndex: 30, minWidth: 120, padding: "8px 12px",
-        borderRadius: 10, background: t.tooltip?.bg || (t.mode === "light" ? "rgba(255,255,255,0.92)" : "rgba(20,24,33,0.92)"),
+        borderRadius: 10, background: tip.bg,
         backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
-        border: `1px solid ${t.tooltip?.border || t.control.border}`, boxShadow: "0 10px 28px -10px rgba(0,0,0,0.35)",
+        border: `1px solid ${tip.border}`, boxShadow: "0 10px 28px -10px rgba(0,0,0,0.35)",
         fontSize: 12, whiteSpace: "nowrap", color: t.text.primary,
       }}
     >
