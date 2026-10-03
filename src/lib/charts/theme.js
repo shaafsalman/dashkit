@@ -8,29 +8,166 @@
 
 import { isDarkMode } from "../../isDarkMode";
 
-export const lighten = (input, amt) => {
-  const source = String(input || "").trim();
-  let channels;
-  let alpha = null;
-  let output = "hex";
+// ---------------------------------------------------------------------------
+// Color parsing. Inputs come from props AND from getComputedStyle, and modern
+// browsers serialize computed colors in CSS Color 4 syntax — space-separated
+// `rgb(250 250 250)`, `rgb(250 250 250 / 0.5)`, `color(srgb 0.98 0.98 0.98)`,
+// `oklch(...)` — so a comma-only regex silently fails on real-world values.
+// parseColor returns [r, g, b, alpha|null] with 0–255 channels, or null.
+// ---------------------------------------------------------------------------
 
-  const hex = source.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+const clamp255 = (v) => Math.max(0, Math.min(255, Math.round(v)));
+
+// "50%" -> 0.5 * scale; "0.5" -> 0.5; "none" -> 0
+const num = (token, scale = 1) => {
+  if (token == null || token === "none") return 0;
+  const str = String(token).trim();
+  if (str.endsWith("%")) return (parseFloat(str) / 100) * scale;
+  return parseFloat(str);
+};
+
+const alphaOf = (token) => {
+  if (token == null) return null;
+  const a = String(token).trim().endsWith("%") ? num(token, 1) : parseFloat(token);
+  return Number.isFinite(a) ? Math.max(0, Math.min(1, a)) : null;
+};
+
+const hueDeg = (token) => {
+  const str = String(token).trim();
+  const v = parseFloat(str);
+  if (str.endsWith("rad")) return (v * 180) / Math.PI;
+  if (str.endsWith("grad")) return v * 0.9;
+  if (str.endsWith("turn")) return v * 360;
+  return v || 0;
+};
+
+// Split the inside of `fn( ... )` into channel tokens + optional alpha,
+// accepting both legacy comma syntax and modern space / slash syntax.
+const splitArgs = (body) => {
+  const [main, slashAlpha] = body.split("/");
+  const parts = main.includes(",")
+    ? main.split(",").map((x) => x.trim()).filter(Boolean)
+    : main.trim().split(/\s+/).filter(Boolean);
+  const alpha = slashAlpha != null ? slashAlpha.trim() : parts[3];
+  return { parts: parts.slice(0, 3), alpha };
+};
+
+const srgbEncode = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
+
+const oklabToRgb = (L, a, b) => {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.291485548 * b;
+  const l = l_ ** 3; const m = m_ ** 3; const s = s_ ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ].map((c) => clamp255(srgbEncode(Math.max(0, Math.min(1, c))) * 255));
+};
+
+const hslToRgb = (h, s, l) => {
+  const k = (n) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [f(0), f(8), f(4)].map((c) => clamp255(c * 255));
+};
+
+// Last resort for anything else (named colors, lab(), hwb(), display-p3 ...):
+// let the browser rasterize it. Returns null outside a DOM / without canvas.
+let probeCtx;
+const parseViaCanvas = (source) => {
+  if (typeof document === "undefined") return null;
+  try {
+    if (probeCtx === undefined) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1; canvas.height = 1;
+      probeCtx = canvas.getContext && canvas.getContext("2d", { willReadFrequently: true });
+    }
+    if (!probeCtx) return null;
+    // Reject strings the browser doesn't understand (fillStyle keeps its old value).
+    // Invalid strings leave fillStyle unchanged, so try from two sentinels.
+    probeCtx.fillStyle = "#000";
+    probeCtx.fillStyle = source;
+    if (probeCtx.fillStyle === "#000000") {
+      probeCtx.fillStyle = "#fff";
+      probeCtx.fillStyle = source;
+      if (probeCtx.fillStyle === "#ffffff") return null;
+    }
+    probeCtx.clearRect(0, 0, 1, 1);
+    probeCtx.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = probeCtx.getImageData(0, 0, 1, 1).data;
+    if (a === 0) return [0, 0, 0, 0];
+    return [r, g, b, a === 255 ? null : a / 255];
+  } catch {
+    return null;
+  }
+};
+
+export const parseColor = (input) => {
+  const source = String(input || "").trim();
+  if (!source) return null;
+
+  const hex = source.match(/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
   if (hex) {
     let value = hex[1];
-    if (value.length === 3) value = value.replace(/(.)/g, "$1$1");
-    if (value.length === 8) {
-      alpha = value.slice(6);
-      value = value.slice(0, 6);
-    }
-    const n = parseInt(value, 16);
-    channels = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-  } else {
-    const rgb = source.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
-    if (!rgb) return source;
-    channels = rgb.slice(1, 4).map(Number);
-    alpha = rgb[4] == null ? null : Number(rgb[4]);
-    output = "rgb";
+    if (value.length <= 4) value = value.replace(/(.)/g, "$1$1");
+    const n = parseInt(value.slice(0, 6), 16);
+    const alpha = value.length === 8 ? parseInt(value.slice(6), 16) / 255 : null;
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255, alpha];
   }
+
+  const fn = source.match(/^([a-z-]+)\(\s*(.*)\s*\)$/i);
+  if (fn) {
+    const name = fn[1].toLowerCase();
+    const body = fn[2];
+    if (name === "rgb" || name === "rgba") {
+      const { parts, alpha } = splitArgs(body);
+      if (parts.length < 3) return null;
+      return [...parts.map((p) => clamp255(num(p, 255))), alphaOf(alpha)];
+    }
+    if (name === "hsl" || name === "hsla") {
+      const { parts, alpha } = splitArgs(body);
+      if (parts.length < 3) return null;
+      return [...hslToRgb(((hueDeg(parts[0]) % 360) + 360) % 360, num(parts[1], 1) / (String(parts[1]).endsWith("%") ? 1 : 100), num(parts[2], 1) / (String(parts[2]).endsWith("%") ? 1 : 100)), alphaOf(alpha)];
+    }
+    if (name === "color") {
+      const [space, ...rest] = body.trim().split(/\s+/);
+      if (/^srgb$/i.test(space)) {
+        const { parts, alpha } = splitArgs(rest.join(" "));
+        if (parts.length < 3) return null;
+        return [...parts.map((p) => clamp255(num(p, 1) * 255)), alphaOf(alpha)];
+      }
+      if (/^srgb-linear$/i.test(space)) {
+        const { parts, alpha } = splitArgs(rest.join(" "));
+        if (parts.length < 3) return null;
+        return [...parts.map((p) => clamp255(srgbEncode(Math.max(0, Math.min(1, num(p, 1)))) * 255)), alphaOf(alpha)];
+      }
+    }
+    if (name === "oklab") {
+      const { parts, alpha } = splitArgs(body);
+      if (parts.length < 3) return null;
+      return [...oklabToRgb(num(parts[0], 1), num(parts[1], 0.4), num(parts[2], 0.4)), alphaOf(alpha)];
+    }
+    if (name === "oklch") {
+      const { parts, alpha } = splitArgs(body);
+      if (parts.length < 3) return null;
+      const L = num(parts[0], 1);
+      const C = num(parts[1], 0.4);
+      const h = (hueDeg(parts[2]) * Math.PI) / 180;
+      return [...oklabToRgb(L, C * Math.cos(h), C * Math.sin(h)), alphaOf(alpha)];
+    }
+  }
+
+  return parseViaCanvas(source);
+};
+
+export const lighten = (input, amt) => {
+  const source = String(input || "").trim();
+  const isHex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(source);
+  const parsed = parseColor(source);
+  if (!parsed) return source;
+  const [r0, g0, b0, alpha] = parsed;
 
   // Positive values mix toward white; negative values mix toward black.
   // Alpha is preserved, so translucent brand-series colors can be shaded
@@ -39,12 +176,13 @@ export const lighten = (input, amt) => {
     const next = amt >= 0
       ? channel + (255 - channel) * amt
       : channel * (1 + amt);
-    return Math.max(0, Math.min(255, Math.round(next)));
+    return clamp255(next);
   };
-  const [r, g, b] = channels.map(mix);
-  if (output === "rgb") return alpha == null ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  const [r, g, b] = [r0, g0, b0].map(mix);
+  if (!isHex) return alpha == null ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
   const body = [r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("");
-  return `#${body}${alpha || ""}`;
+  const alphaHex = alpha == null ? "" : clamp255(alpha * 255).toString(16).padStart(2, "0");
+  return `#${body}${alphaHex}`;
 };
 
 export const darken = (hex, amt) => lighten(hex, -amt);
@@ -52,26 +190,21 @@ export const darken = (hex, amt) => lighten(hex, -amt);
 // Pick readable ink for a data fill. This is intentionally based on the fill
 // itself rather than the card mode: brand cards often contain both white and
 // charcoal marks at the same time, so a single card-wide text color cannot be
-// correct for every segment/cell.
-export const contrastingText = (input, light = "#ffffff", dark = "#0f172a") => {
-  const source = String(input || "").trim();
-  let rgb;
-  const hex = source.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
-  if (hex) {
-    let value = hex[1];
-    if (value.length === 3) value = value.replace(/(.)/g, "$1$1");
-    const n = parseInt(value.slice(0, 6), 16);
-    rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-  } else {
-    const match = source.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
-    if (!match) return light;
-    rgb = match.slice(1, 4).map(Number);
-  }
-  const linear = rgb.map((channel) => {
+// correct for every segment/cell. Unparseable input keeps the old `light`
+// fallback.
+export const relativeLuminance = (input) => {
+  const parsed = parseColor(input);
+  if (!parsed) return null;
+  const linear = parsed.slice(0, 3).map((channel) => {
     const value = channel / 255;
     return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
   });
-  const luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+};
+
+export const contrastingText = (input, light = "#ffffff", dark = "#0f172a") => {
+  const luminance = relativeLuminance(input);
+  if (luminance == null) return light;
   return luminance > 0.42 ? dark : light;
 };
 
@@ -197,10 +330,29 @@ export const resolveTheme = (theme, fallbackMode = "dark") => {
   const solidResolved = {
     ...resolved,
     ...solid,
+    isSolid: true,
     text: { ...resolved.text, ...(solid.text || {}) },
     control: { ...resolved.control, ...(solid.control || {}) },
   };
   return frame ? { ...solidResolved, border: frame.border ?? solidResolved.border } : solidResolved;
+};
+
+/**
+ * Tooltip surface for a resolved theme. `theme.tooltip = { bg, border }`
+ * overrides it explicitly. Otherwise it is derived from the resolved theme,
+ * never from the light/dark guess alone: a host whose dark mode isn't the
+ * `<html class="dark">` convention (or a brand `solid` card with white text)
+ * would otherwise get a white box under white text.
+ *  - solid/brand themes reuse the opaque brand surface the text was chosen for;
+ *  - everything else picks a light or dark glass by the luminance of
+ *    `text.primary`, so the tooltip always contrasts with its own ink.
+ */
+export const tooltipColors = (t) => {
+  const textIsLight = (relativeLuminance(t.text?.primary) ?? 0) > 0.42;
+  const fallbackBg = textIsLight ? "rgba(20,20,20,0.92)" : "rgba(255,255,255,0.92)";
+  const bg = t.tooltip?.bg || (t.isSolid && t.surface ? t.surface : fallbackBg);
+  const border = t.tooltip?.border || t.control?.border || t.border;
+  return { bg, border };
 };
 
 // Outer card style derived from the theme (used by ChartCard).
