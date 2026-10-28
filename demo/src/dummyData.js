@@ -196,3 +196,39 @@ export const timelineEvents = [
   { id: "e11", at: "2026-10-29T10:00", category: "visit", title: "Nephrology consult" },
   { id: "e12", at: "2026-11-03T08:30", category: "lab", title: "Metabolic panel" },
 ];
+
+// A week of daily vitals for one patient, Oct 21 to Oct 27. Heart rate and
+// temperature are climbing, SpO2 is drifting down and weight has crossed the
+// fluid-gain limit; NEWS2 is worked out from each day's readings.
+const VITAL_DAYS = ["Oct 21", "Oct 22", "Oct 23", "Oct 24", "Oct 25", "Oct 26", "Oct 27"];
+const byDay = (vals) => vals.map((value, i) => ({ label: VITAL_DAYS[i], value }));
+
+export const vitalSigns = [
+  { id: "hr", label: "Heart rate", unit: "bpm", readings: byDay([84, 86, 85, 88, 91, 96, 104]), normal: [60, 100], critLow: 40, critHigh: 130, note: "Resting pulse, once a day. Normal 60 to 100." },
+  { id: "sys", label: "Systolic", unit: "mmHg", readings: byDay([132, 128, 135, 130, 134, 129, 131]), normal: [90, 140], critLow: 80, critHigh: 180, note: "Normal 90 to 140." },
+  { id: "dia", label: "Diastolic", unit: "mmHg", readings: byDay([82, 80, 84, 81, 83, 80, 82]), normal: [60, 90], note: "Normal 60 to 90." },
+  { id: "spo2", label: "SpO2", unit: "%", readings: byDay([97, 97, 96, 96, 95, 95, 94]), normal: [95, 100], critLow: 91, note: "Oxygen saturation on room air. 91 or lower is critical." },
+  { id: "rr", label: "Respiration", unit: "/min", readings: byDay([16, 16, 17, 16, 18, 18, 19]), normal: [12, 20], critHigh: 25, note: "Breaths a minute. Normal 12 to 20." },
+  { id: "temp", label: "Temperature", unit: "°C", decimals: 1, readings: byDay([36.8, 36.9, 37.0, 37.1, 37.4, 37.8, 38.3]), normal: [36.1, 37.9], critHigh: 39.5, note: "Normal 36.1 to 37.9." },
+  { id: "weight", label: "Weight", unit: "kg", decimals: 1, form: "bars", readings: byDay([82.4, 82.6, 83.1, 83.4, 84.0, 84.6, 85.1]), limit: 84.4, note: "The limit sits 2 kg over the first reading of the week: fluid gain worth a call." },
+  { id: "news2", label: "NEWS2", unit: "score", form: "segments", domain: [0, 20], steps: 20, readings: byDay([0, 0, 0, 0, 2, 2, 3]), normal: [0, 4], critHigh: 5, note: "Early warning score from each day's vitals. 5 or more calls for urgent review." },
+];
+
+// Lab results, matching the timeline: potassium was 5.9 on Oct 3 and 6.3 on Oct 21.
+export const potassiumResults = [
+  { label: "Sep 12", value: 4.4 },
+  { label: "Sep 26", value: 4.8 },
+  { label: "Oct 3", value: 5.9 },
+  { label: "Oct 10", value: 5.6 },
+  { label: "Oct 21", value: 6.3 },
+];
+export const hemoglobinResults = [
+  { label: "Sep 12", value: 13.6 },
+  { label: "Sep 26", value: 13.4 },
+  { label: "Oct 3", value: 13.1 },
+  { label: "Oct 10", value: 12.9 },
+  { label: "Oct 21", value: 12.8 },
+];
+
+// Care-activity events a week over the last 13 weeks.
+export const eventsPerWeek = [3, 5, 2, 6, 4, 8, 5, 7, 9, 6, 11, 8, 12];

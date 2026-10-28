@@ -5,7 +5,7 @@ import {
   ChevronsLeft, ChevronsRight, Sun, Moon, SlidersHorizontal,
   ShoppingBag, MousePointerClick, UserPlus, CreditCard, Activity,
   ChevronDown, ChevronLeft, ChevronRight, Check, Copy, Code2,
-  CalendarDays, FlaskConical, Stethoscope, Pill, ScanLine, FileText,
+  CalendarDays, FlaskConical, Stethoscope, Pill, ScanLine, FileText, HeartPulse, ShieldAlert,
 } from "lucide-react";
 import {
   KpiCard,
@@ -35,6 +35,11 @@ import {
   RankedList,
   EventStrip,
   ReferenceRangeBar,
+  Instrument,
+  VitalsMonitor,
+  LabTrendCard,
+  ChartCard,
+  resolveTheme,
   NetworkGraphChart,
   RibbonStackChart,
   BalanceStatsChart,
@@ -1060,6 +1065,41 @@ const EVENT_KINDS = {
   note: { label: "Note", color: "#64748B", icon: FileText },
 };
 
+// The four Instrument forms side by side. Instrument has no card of its own, so
+// the demo puts them in one.
+function InstrumentForms() {
+  const t = resolveTheme("light");
+  const forms = [
+    { form: "line", note: "heart rate, 7 days", el: <Instrument theme="light" form="line" values={D.vitalSigns[0].readings.map((r) => r.value)} normal={[60, 100]} critHigh={130} label="Heart rate over 7 days, 84 to 104 bpm" /> },
+    { form: "bars", note: "events a week", el: <Instrument theme="light" form="bars" values={D.eventsPerWeek} label="Care events a week over 13 weeks" /> },
+    { form: "ring", note: "requests done", el: <Instrument theme="light" form="ring" value={7} domain={[0, 9]} caption="done" label="7 of 9 requests completed" /> },
+    { form: "segments", note: "NEWS2, 5+ urgent", el: <Instrument theme="light" form="segments" value={3} domain={[0, 20]} steps={20} normal={[0, 4]} critHigh={5} marks={[[0, "0"], [5, "5"], [20, "20"]]} label="NEWS2 score 3 of 20" /> },
+  ];
+  return (
+    <ChartCard theme={t} size="fill" width="100%" title="Instrument" subtitle="Four forms" icon={<Activity size={18} />} iconColor="#0EA5E9">
+      {() => (
+        <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gridTemplateRows: "minmax(0, 1fr) minmax(0, 1fr)", gap: "14px 18px" }}>
+          {forms.map((f) => (
+            <div key={f.form} style={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+              <span style={{ fontSize: 11, color: t.text.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <b style={{ fontFamily: "'JetBrains Mono', monospace", color: t.text.secondary }}>{f.form}</b> · {f.note}
+              </span>
+              <div style={{ flex: 1, minHeight: 0 }}>{f.el}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </ChartCard>
+  );
+}
+
+const CARE_GAPS = [
+  { label: "Critical", value: 2, color: "#E11D48" },
+  { label: "High", value: 3, color: "#D97706" },
+  { label: "Medium", value: 5, color: "#3B82F6" },
+  { label: "Low", value: 4, color: "#94A3B8" },
+];
+
 function CardsGallery() {
   const grid = "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3";
   const h = 280;
@@ -1080,8 +1120,15 @@ function CardsGallery() {
       <Named name="RankedList" height={h}><RankedList theme="light" title="Top Routes" icon={<Trophy size={18} />} subtitle="By revenue" items={D.routes} formatValue={(v)=>`$${(v/1e6).toFixed(1)}M`} prevLabel="2025" /></Named>
       <Named name="ReferenceRangeBar" height={h}><ReferenceRangeBar theme="light" icon={<FlaskConical size={18} />} iconColor="#E11D48" title="Potassium" value={6.3} previous={5.9} range={[3.5, 5.1]} critLow={2.8} critHigh={6.0} unit="mmol/L" /></Named>
       <Named name="ReferenceRangeBar · normal" height={h}><ReferenceRangeBar theme="light" icon={<FlaskConical size={18} />} iconColor="#8B5CF6" title="Hemoglobin" value={12.8} previous={13.4} range={[12, 16]} critLow={7} unit="g/dL" /></Named>
+      <Named name="LabTrendCard" height={320}><LabTrendCard theme="light" icon={<FlaskConical size={18} />} iconColor="#E11D48" label="Potassium" unit="mmol/L" results={D.potassiumResults} normal={[3.5, 5.1]} critLow={2.8} critHigh={6.0} /></Named>
+      <Named name="LabTrendCard · in range" height={320}><LabTrendCard theme="light" icon={<FlaskConical size={18} />} iconColor="#8B5CF6" label="Hemoglobin" unit="g/dL" results={D.hemoglobinResults} normal={[12, 16]} critLow={7} /></Named>
+      <Named name="Instrument" height={320}><InstrumentForms /></Named>
+      <Named name="DonutChart · care gaps" height={h}><DonutChart theme="light" size="fill" title="Care gaps" subtitle="Open, by severity" icon={<ShieldAlert size={16} />} segments={CARE_GAPS} centerLabel="Open" /></Named>
       <div className="md:col-span-2 xl:col-span-3">
         <Named name="EventStrip" height={340}><EventStrip theme="light" title="Patient timeline" icon={<CalendarDays size={18} />} iconColor="#3B82F6" events={D.timelineEvents} categories={EVENT_KINDS} today="2026-10-27" selectedId="e8" /></Named>
+      </div>
+      <div className="md:col-span-2 xl:col-span-3">
+        <Named name="VitalsMonitor" height={470}><VitalsMonitor theme="light" title="Vitals" subtitle="7 days of daily readings" icon={<HeartPulse size={18} />} iconColor="#E11D48" signals={D.vitalSigns} /></Named>
       </div>
     </div>
   );
