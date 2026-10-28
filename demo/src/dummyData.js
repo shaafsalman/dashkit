@@ -179,3 +179,20 @@ export const kpis = [
   { label: "On-Time", value: "86%", sub: "industry avg 79%", delta: -1.2, tone: "crimson" },
   { label: "Fleet", value: "24", sub: "5 tails top-utilized", delta: 0, tone: "violet" },
 ];
+
+// A sample record for EventStrip: a few weeks of visits, labs and medication
+// changes, today with nothing logged, and two booked days after it.
+export const timelineEvents = [
+  { id: "e1", at: "2026-10-02T10:30", category: "visit", title: "Cardiology follow-up" },
+  { id: "e2", at: "2026-10-02T11:05", category: "lab", title: "Basic metabolic panel drawn" },
+  { id: "e3", at: "2026-10-03T08:40", category: "lab", title: "Potassium 5.9, repeat ordered" },
+  { id: "e4", at: "2026-10-09T14:00", category: "med", title: "Lisinopril reduced to 10 mg" },
+  { id: "e5", at: "2026-10-14T09:15", category: "imaging", title: "Echocardiogram, EF 45%" },
+  { id: "e6", at: "2026-10-20T16:20", category: "note", title: "Nurse call: ankle swelling" },
+  { id: "e7", at: "2026-10-21T09:00", category: "visit", title: "Same-day review" },
+  { id: "e8", at: "2026-10-21T09:40", category: "lab", title: "Potassium 6.3, critical" },
+  { id: "e9", at: "2026-10-21T10:10", category: "med", title: "Furosemide 20 mg started" },
+  { id: "e10", at: "2026-10-26T13:00", category: "lab", title: "Repeat metabolic panel" },
+  { id: "e11", at: "2026-10-29T10:00", category: "visit", title: "Nephrology consult" },
+  { id: "e12", at: "2026-11-03T08:30", category: "lab", title: "Metabolic panel" },
+];
