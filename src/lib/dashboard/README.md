@@ -1,6 +1,6 @@
 # `lib/dashboard`
 
-Fifteen summary-card components for building multi-section dashboard pages, plus `sectionTheme.js` — a small color system that ties them (and anything in `lib/charts`) to a page-wide "one hue per section" layout.
+Seventeen summary-card components and one inline instrument for building multi-section dashboard pages, plus `sectionTheme.js` — a small color system that ties them (and anything in `lib/charts`) to a page-wide "one hue per section" layout.
 
 Everything here is imported from the package root:
 
@@ -9,15 +9,16 @@ import {
   GradientStatCard, FleetSnapshotCard, TrendBarcodeCard, ActivityCalendar,
   ProgressTrackList, RadialBladeChart, PercentGradientCard, MetricsTable,
   WeekdayBars, RankedLocationBoard, CompositionBar, TargetBarcodeChart, RankedList,
-  EventStrip, ReferenceRangeBar,
+  EventStrip, ReferenceRangeBar, VitalsMonitor, LabTrendCard, Instrument,
   SECTIONS, whiteTheme, solidTheme, sectionRowHeight, GRADIENTS,
 } from "lib/dashboard";
 ```
 
-Two families of component live side by side here:
+Three kinds of component live side by side here:
 
-- **`theme`-driven cards** (everything except the three below) are wrapped in `ChartCard` from `../charts`. They take a `theme` object (resolved via `resolveTheme(theme, "light")`, so it's safe to omit) plus `title` / `icon` / `iconColor`, render an internal `Empty` state when their data prop is empty, and are always mounted `expandable` with no extra header controls — that's baked into each component, not something you configure from the outside.
+- **`theme`-driven cards** (everything except the four below) are wrapped in `ChartCard` from `../charts`. They take a `theme` object (resolved via `resolveTheme(theme, "light")`, so it's safe to omit) plus `title` / `icon` / `iconColor`, render an internal `Empty` state when their data prop is empty, and are always mounted `expandable` with no extra header controls — that's baked into each component, not something you configure from the outside.
 - **Gradient tiles** — `GradientStatCard`, `FleetSnapshotCard`, `PercentGradientCard` — are plain `<div>`s, not `ChartCard`s. No title bar, no expand affordance. They take a `gradient` key (one of `GRADIENTS`: `blue`, `emerald`, `sky`, `violet`, `amber`) instead of a `theme` object. Since the lookup falls back to the raw string (`GRADIENTS[gradient] || gradient`), you can also hand one of these a literal CSS gradient — including one built from `SECTIONS[key].from`/`.to` — to lock a gradient tile to the same section hue as the `solidTheme()` cards around it.
+- **The inline instrument** — `Instrument` — has no card, title or empty state. It fills whatever box it is put in (a table cell, a card header, a `VitalsMonitor` cell) and takes `theme` only for its colours.
 
 Several components were extracted out of an internal aviation-ops app and still ship with aviation-flavored default titles, units, and (in a couple of cases) hardcoded icons/labels baked into their JSX rather than exposed as props. Each entry below calls that out and says exactly what's swappable via props vs. what requires editing the source.
 
@@ -564,6 +565,108 @@ One result against its normal range and critical limits, drawn the way lab syste
   critHigh={6.0}
   unit="mmol/L"
 />
+```
+
+### VitalsMonitor
+<!-- screenshot: VitalsMonitor -->
+
+A set of signals read side by side, each judged against its own normal band, limit or critical lines. The left side is a grid of cells: name, latest value, a small `Instrument` and a dot when the signal is out of range. The right side is the selected signal in full: a status pill, the change since the reading before, its trend against the reference lines (hover reads out a point), a range switch, and its average, lowest and highest over the readings shown. It opens on the first critical signal, else the first out-of-range one. The header counts how many are critical or out of range. Below ~760px the detail drops under the grid and the body scrolls.
+
+**When to use it:** a bedside or remote-monitoring view of vitals, a set of service health signals, sensors on one machine. Anything where several measures each have their own "normal" and the reader needs the one that has drifted.
+
+**Key props:**
+| prop | default | notes |
+|---|---|---|
+| `theme`, `icon`, `iconColor`, `title`, `subtitle` | `"Vitals"` | standard `ChartCard` theming |
+| `signals` | `[]` | see below |
+| `windows` | 3 days / 5 days / All | `{ label, count }[]`; `count: Infinity` shows every reading. Windows as long as the record are dropped |
+| `selectedId`, `onSelect` | first flagged signal | controlled or uncontrolled; `onSelect(id)` on click |
+
+Each signal: `{ id, label, unit, readings: [{ label, value }], normal?: [lo, hi], critLow?, critHigh?, limit?, limitSide?: "high" | "low", form?: "line" | "bars" | "segments", domain?, steps?, decimals?, note? }`. A reading at or past `critLow`/`critHigh` is Critical (red). Outside `normal`, or past `limit` on `limitSide`, it is High or Low (amber). `form` picks the cell's instrument (`segments` needs a `domain`), and `note` is the line under the detail's title.
+
+**Size/aspect:** `ChartCard size="fill"`, a **wide band** (full row, ~460px tall) fits a 3-column grid of cells beside the detail.
+
+```jsx
+<VitalsMonitor
+  title="Vitals"
+  icon={<HeartPulse size={18} />}
+  signals={[
+    { id: "hr", label: "Heart rate", unit: "bpm", normal: [60, 100], critHigh: 130,
+      readings: [{ label: "Oct 26", value: 96 }, { label: "Oct 27", value: 104 }] },
+    { id: "weight", label: "Weight", unit: "kg", form: "bars", limit: 84.4,
+      readings: [{ label: "Oct 26", value: 84.6 }, { label: "Oct 27", value: 85.1 }] },
+  ]}
+/>
+```
+
+### LabTrendCard
+<!-- screenshot: LabTrendCard -->
+
+One test's results over time. The header row has the latest value, its status pill and the change since the result before. Below it is the trend against the normal band and the critical lines, then the average, lowest and highest over the results shown, and the normal range. A Last 3 / Last 5 / All switch sits in the card header. Where `ReferenceRangeBar` answers "where does this result sit", this answers "which way has it been going".
+
+**When to use it:** a lab result with history (potassium, HbA1c, creatinine), or any repeated measurement with a reference range.
+
+**Key props:**
+| prop | default | notes |
+|---|---|---|
+| `theme`, `icon`, `iconColor`, `title`, `subtitle` | `title` falls back to `label` | standard `ChartCard` theming |
+| `results` | `[]` | `{ label, value }[]`, oldest first |
+| `normal` | — | `[low, high]`; drawn as a band and shown in the stats row |
+| `critLow`, `critHigh` | — | drawn as red dashed lines when they're near the data; at or past either one the result is Critical |
+| `unit` | `""` | |
+| `windows` | Last 3 / Last 5 / All | as in `VitalsMonitor` |
+| `formatValue` | the results' own decimals | used for every number on the card |
+
+**Size/aspect:** `ChartCard size="fill"`, about **320px tall** in a third-of-a-row slot. The plot takes whatever height is left.
+
+```jsx
+<LabTrendCard
+  label="Potassium"
+  icon={<FlaskConical size={18} />}
+  unit="mmol/L"
+  normal={[3.5, 5.1]}
+  critLow={2.8}
+  critHigh={6.0}
+  results={[{ label: "Oct 3", value: 5.9 }, { label: "Oct 10", value: 5.6 }, { label: "Oct 21", value: 6.3 }]}
+/>
+```
+
+### Instrument
+<!-- screenshot: Instrument -->
+
+A small reading with no card around it, sized by its parent. It has four forms:
+
+- `line`: a run of values against the normal band.
+- `bars`: a run of values; bars start below the lowest value so small changes in a large number still show, and counts keep zero.
+- `ring`: one value on a scale, with centre text and a caption.
+- `segments`: one value as filled steps; empty steps in a critical or out-of-range zone are tinted, so the scale shows where trouble starts.
+
+Values past the normal band or `limit` turn amber, values at a critical limit turn red, and the latest value is emphasised.
+
+**When to use it:** inside table rows, card headers, list items and the cells of `VitalsMonitor`. Anywhere a full chart is too much.
+
+**Key props:**
+| prop | default | notes |
+|---|---|---|
+| `form` | `"line"` | `"line"`, `"bars"`, `"ring"` or `"segments"` |
+| `values` | `[]` | for `line` and `bars` |
+| `value` | — | for `ring` and `segments` |
+| `domain` | fitted to the data (`[0, 100]` for ring and segments) | `[min, max]` |
+| `normal`, `limit`, `limitSide`, `critLow`, `critHigh` | — | judge the values, as in `VitalsMonitor` |
+| `steps`, `marks` | `20`, `[]` | `segments` only; `marks` is `[value, label][]` under the steps |
+| `text`, `caption` | the percentage, — | `ring` only |
+| `color` | ink for line/bars, accent for ring/segments | colour of in-range values |
+| `label` | a generated summary | the accessible name; pass a real sentence |
+
+**Size/aspect:** fills its parent. Give the parent a height (24–40px for `line`, `bars` and `segments`; a square for `ring`).
+
+```jsx
+<div style={{ height: 28 }}>
+  <Instrument form="bars" values={[82.4, 83.1, 84.0, 85.1]} limit={84.4} label="Weight over 4 days, above the fluid-gain limit" />
+</div>
+<div style={{ width: 88, height: 88 }}>
+  <Instrument form="ring" value={7} domain={[0, 9]} caption="done" label="7 of 9 requests completed" />
+</div>
 ```
 
 ---
