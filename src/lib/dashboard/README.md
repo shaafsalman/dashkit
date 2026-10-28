@@ -1,6 +1,6 @@
 # `lib/dashboard`
 
-Thirteen summary-card components for building multi-section dashboard pages, plus `sectionTheme.js` — a small color system that ties them (and anything in `lib/charts`) to a page-wide "one hue per section" layout.
+Fifteen summary-card components for building multi-section dashboard pages, plus `sectionTheme.js` — a small color system that ties them (and anything in `lib/charts`) to a page-wide "one hue per section" layout.
 
 Everything here is imported from the package root:
 
@@ -9,6 +9,7 @@ import {
   GradientStatCard, FleetSnapshotCard, TrendBarcodeCard, ActivityCalendar,
   ProgressTrackList, RadialBladeChart, PercentGradientCard, MetricsTable,
   WeekdayBars, RankedLocationBoard, CompositionBar, TargetBarcodeChart, RankedList,
+  EventStrip, ReferenceRangeBar,
   SECTIONS, whiteTheme, solidTheme, sectionRowHeight, GRADIENTS,
 } from "lib/dashboard";
 ```
@@ -499,6 +500,71 @@ This only activates if **at least one** item in the list has `prev != null` — 
 ```
 
 **Size/aspect:** `ChartCard size="fill"`, rows scroll past 8 — a **tall-to-medium rectangle**, similar footprint to `ProgressTrackList`/`RankedLocationBoard`.
+
+
+### EventStrip
+<!-- screenshot: EventStrip -->
+
+A record as a horizontal strip of days, oldest on the left. Every day that has events gets a column of labelled cards (category colour bar, icon, time, two-line title), so nothing hides behind a hover. Quiet stretches of `minGapDays` or more collapse into a "N days" marker. Today gets a pill and a ringed dot on the spine; days after today are drawn dashed and labelled `aheadLabel`. The strip opens scrolled to its newest day.
+
+**When to use it:** a patient or customer history, an incident log, a project's milestones — any short record where the reader needs to see *what happened on which day* at a glance, including what is booked next.
+
+**Key props:**
+| prop | default | notes |
+|---|---|---|
+| `theme`, `icon`, `iconColor`, `title`, `subtitle` | `"Timeline"` | standard `ChartCard` theming; `iconColor` also colours the Today pill |
+| `events` | `[]` | `{ id, at: "YYYY-MM-DDTHH:MM", title, category }[]`; dates are read from the string, so no timezone shift |
+| `categories` | `{}` | `{ [category]: { label, color, icon } }`; `icon` is a component (e.g. a lucide icon) or an element |
+| `today` | the local date | `"YYYY-MM-DD"`; always shown, with `emptyDayLabel` when nothing happened |
+| `selectedId`, `onPick` | — | `onPick(id, event)` on click; the selected card is outlined |
+| `aheadLabel` | `"Booked"` | header label for days after today |
+| `minGapDays` | `3` | shortest quiet stretch that gets its own marker |
+
+**Size/aspect:** `ChartCard size="fill"`, columns are at least 136px wide and scroll sideways past the card; a **wide band** (full row, ~320px tall) reads best.
+
+```jsx
+<EventStrip
+  title="Patient timeline"
+  icon={<CalendarDays size={18} />}
+  today="2026-10-27"
+  categories={{ lab: { label: "Lab", color: "#8B5CF6", icon: FlaskConical } }}
+  events={[{ id: "e1", at: "2026-10-21T09:40", category: "lab", title: "Potassium 6.3, critical" }]}
+  onPick={(id) => setOpen(id)}
+/>
+```
+
+### ReferenceRangeBar
+<!-- screenshot: ReferenceRangeBar -->
+
+One result against its normal range and critical limits, drawn the way lab systems do it: a track, the normal band, critical zones at either end, a solid marker for this result and a hollow ring for the previous one. The marker travels from the previous value to this one on mount (instant under `prefers-reduced-motion`). The header shows the value, a status pill (Normal / High / Low / Critical) and the change since the previous result; a critical result turns the value, marker and pill red.
+
+**When to use it:** any single reading with a reference range — lab results, vitals, SLA latency against its target band, a sensor against its safe limits.
+
+**Key props:**
+| prop | default | notes |
+|---|---|---|
+| `theme`, `icon`, `iconColor`, `title`, `subtitle` | `title` falls back to `label` | standard `ChartCard` theming |
+| `value` | — | required |
+| `range` | — | required, `[low, high]` of the normal band |
+| `critLow`, `critHigh` | — | optional; at or past either one the result is Critical |
+| `previous`, `previousLabel` | —, `"Previous"` | the hollow marker and the delta |
+| `unit` | `""` | shown beside the value |
+| `formatValue` | up to 2 decimals | used for every number on the card |
+
+**Size/aspect:** `ChartCard size="fill"`, a **landscape rectangle** (~280px tall) fits the value row, bar, ticks and legend without crowding.
+
+```jsx
+<ReferenceRangeBar
+  title="Potassium"
+  icon={<FlaskConical size={18} />}
+  value={6.3}
+  previous={5.9}
+  range={[3.5, 5.1]}
+  critLow={2.8}
+  critHigh={6.0}
+  unit="mmol/L"
+/>
+```
 
 ---
 

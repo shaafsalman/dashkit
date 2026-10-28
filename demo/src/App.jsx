@@ -5,6 +5,7 @@ import {
   ChevronsLeft, ChevronsRight, Sun, Moon, SlidersHorizontal,
   ShoppingBag, MousePointerClick, UserPlus, CreditCard, Activity,
   ChevronDown, ChevronLeft, ChevronRight, Check, Copy, Code2,
+  CalendarDays, FlaskConical, Stethoscope, Pill, ScanLine, FileText,
 } from "lucide-react";
 import {
   KpiCard,
@@ -32,6 +33,8 @@ import {
   CompositionBar,
   TargetBarcodeChart,
   RankedList,
+  EventStrip,
+  ReferenceRangeBar,
   NetworkGraphChart,
   RibbonStackChart,
   BalanceStatsChart,
@@ -1049,6 +1052,14 @@ function ChartsGallery() {
   );
 }
 
+const EVENT_KINDS = {
+  visit: { label: "Visit", color: "#3B82F6", icon: Stethoscope },
+  lab: { label: "Lab", color: "#8B5CF6", icon: FlaskConical },
+  med: { label: "Medication", color: "#059669", icon: Pill },
+  imaging: { label: "Imaging", color: "#F59E0B", icon: ScanLine },
+  note: { label: "Note", color: "#64748B", icon: FileText },
+};
+
 function CardsGallery() {
   const grid = "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3";
   const h = 280;
@@ -1067,6 +1078,11 @@ function CardsGallery() {
       <Named name="CompositionBar" height={h}><CompositionBar theme="light" icon={<DollarSign size={18} />} iconColor="#8B5CF6" items={D.costBreakdown} formatMoney={(v)=>`$${(v/1e6).toFixed(1)}M`} /></Named>
       <Named name="TargetBarcodeChart" height={h}><TargetBarcodeChart theme="light" icon={<Percent size={18} />} iconColor="#059669" title="Load Factor by Month" months={D.loadFactorByMonth} target={75} unit="%" /></Named>
       <Named name="RankedList" height={h}><RankedList theme="light" title="Top Routes" icon={<Trophy size={18} />} subtitle="By revenue" items={D.routes} formatValue={(v)=>`$${(v/1e6).toFixed(1)}M`} prevLabel="2025" /></Named>
+      <Named name="ReferenceRangeBar" height={h}><ReferenceRangeBar theme="light" icon={<FlaskConical size={18} />} iconColor="#E11D48" title="Potassium" value={6.3} previous={5.9} range={[3.5, 5.1]} critLow={2.8} critHigh={6.0} unit="mmol/L" /></Named>
+      <Named name="ReferenceRangeBar · normal" height={h}><ReferenceRangeBar theme="light" icon={<FlaskConical size={18} />} iconColor="#8B5CF6" title="Hemoglobin" value={12.8} previous={13.4} range={[12, 16]} critLow={7} unit="g/dL" /></Named>
+      <div className="md:col-span-2 xl:col-span-3">
+        <Named name="EventStrip" height={340}><EventStrip theme="light" title="Patient timeline" icon={<CalendarDays size={18} />} iconColor="#3B82F6" events={D.timelineEvents} categories={EVENT_KINDS} today="2026-10-27" selectedId="e8" /></Named>
+      </div>
     </div>
   );
 }
