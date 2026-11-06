@@ -57,8 +57,8 @@ export function WeekdayBars({ theme, title = "Weekly Flight Volume", icon, iconC
       }}
     >
       {() => (
-        <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", paddingTop: 28 }}>
-          <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end", gap: "clamp(10px, 2.2vw, 30px)", padding: "0 clamp(8px, 2.4vw, 28px)" }}>
+        <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", paddingTop: 8 }}>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end", gap: "clamp(6px, 2vw, 28px)", padding: "0 clamp(2px, 1.6vw, 24px)" }}>
             {data.buckets.map((b, i) => {
               const frac = b.total / data.max;
               const lit = hover === i;
@@ -69,28 +69,30 @@ export function WeekdayBars({ theme, title = "Weekly Flight Volume", icon, iconC
                   onMouseLeave={() => setHover(null)}
                   style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", height: "100%" }}
                 >
+                  {/* value sits above the track (outside its overflow clip) so
+                      narrow columns never cut it off */}
+                  <span
+                    style={{
+                      ...MONO, fontSize: "clamp(10px, 1.1vw, 12px)", fontWeight: 700, lineHeight: 1, marginBottom: 6,
+                      color: lit || i === busiest ? t.text.primary : t.text.secondary, whiteSpace: "nowrap",
+                    }}
+                  >
+                    {compact(b.total)}
+                  </span>
                   <div style={{ flex: 1, minHeight: 0, width: "min(100%, 58px)", background: t.grid, display: "flex", alignItems: "flex-end", position: "relative", borderRadius: 8, overflow: "hidden" }}>
                     <div
                       style={{
                         width: "100%",
                         height: `${Math.max(3, frac * 100)}%`,
-                        background: i === busiest ? accent : `${accent}B8`,
+                        background: i === busiest
+                          ? `linear-gradient(180deg, ${accent}, ${accent}D9)`
+                          : `repeating-linear-gradient(135deg, ${accent}B0 0 6px, ${accent}8C 6px 9px)`,
                         opacity: lit ? 1 : i === busiest ? 0.95 : 0.72,
-                        borderRadius: "7px 7px 0 0",
+                        borderRadius: 8,
                         transition: "opacity .15s, transform .15s",
                         transform: lit ? "scaleX(1.04)" : "none",
                       }}
                     />
-                    <span
-                      style={{
-                        ...MONO, position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", textAlign: "center",
-                        fontSize: 11.5, fontWeight: 700, color: t.text.primary,
-                        background: t.surface, border: `1px solid ${t.control.border}`, borderRadius: 999,
-                        padding: "2px 6px", lineHeight: 1.2, whiteSpace: "nowrap",
-                      }}
-                    >
-                      {compact(b.total)}
-                    </span>
                   </div>
                   <span style={{ ...MONO, fontSize: 11.5, marginTop: 8, color: lit || i === busiest ? t.text.primary : t.text.muted, fontWeight: lit || i === busiest ? 700 : 500 }}>
                     {DOW[i]}

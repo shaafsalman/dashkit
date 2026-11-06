@@ -1,4 +1,4 @@
-import React, { useMemo, useState, memo } from "react";
+import React, { useMemo, useState, memo, useId } from "react";
 import { resolveTheme, lighten, AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_GRID_PROPS } from "./theme";
 import { ChartCard, Legend, ChangePill, ChartTooltip } from "./chrome";
 import { useMeasuredBox } from "./useMeasuredBox";
@@ -70,7 +70,7 @@ const RibbonStackChart = memo((props) => {
     controls,
     onControl,
     size = "l",
-    series = DEFAULT_SERIES,
+    series: seriesIn = DEFAULT_SERIES,
     data = DEFAULT_DATA,
     total = 9257.51,
     changePct = 15.8,
@@ -99,8 +99,13 @@ const RibbonStackChart = memo((props) => {
   } = props;
 
   const t = resolveTheme(theme, "dark");
+  const series = useMemo(
+    () => (t.mono ? seriesIn.map((sr, i) => ({ ...sr, color: t.series[i % t.series.length] })) : seriesIn),
+    [seriesIn, t.mono, t.series]
+  );
   const TOP_Y = topPad ?? TOP_Y_DEFAULT;
   const PAD_X = padX ?? PAD_X_DEFAULT;
+  const uid = useId().replace(/:/g, "");
   const fmt = useMemo(() => formatValue || makeMoney(currency, decimals), [formatValue, currency, decimals]);
   const axisFmt = axisFormat || fmt;
   const barLabels = showBarLabels ?? !showAxis;
@@ -123,7 +128,13 @@ const RibbonStackChart = memo((props) => {
     const aspectWidth = size === "fill" && plotBox.height > 0
       ? VBH * (plotBox.width / plotBox.height)
       : naturalWidth;
-    const vbw = Math.max(naturalWidth, aspectWidth);
+    // Never wider than the container needs: a fixed ~900-unit viewBox in a
+    // phone-width card scaled every label down to ~5px. Only a minimum column
+    // pitch is enforced so bars keep room between them.
+    const minWidth = AXIS_W + PAD_X * 2 + Math.max(n - 1, 0) * 56;
+    const vbw = size === "fill"
+      ? Math.max(minWidth, aspectWidth)
+      : Math.max(minWidth, Math.min(naturalWidth, plotBox.width || naturalWidth));
     const gap = n > 1 ? (vbw - AXIS_W - PAD_X * 2) / (n - 1) : COL_GAP;
     // Bar width must stay narrower than the gap so adjacent bars never overlap
     const barW = Math.min(BAR_W, Math.floor(gap * 0.58));
@@ -243,13 +254,13 @@ const RibbonStackChart = memo((props) => {
       <svg viewBox={`0 0 ${vbw} ${VBH}`} width="100%" style={{ overflow: "visible" }} role="img" aria-label={`${title} chart`}>
         <defs>
           {series.map((sr) => (
-            <linearGradient key={`bg-${sr.key}`} id={`bar-${sr.key}`} x1="0" y1="0" x2="0" y2="1">
+            <linearGradient key={`bg-${sr.key}`} id={`${uid}-bar-${sr.key}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={lighten(sr.color, 0.22)} />
               <stop offset="100%" stopColor={sr.color} />
             </linearGradient>
           ))}
           {series.map((sr) => (
-            <linearGradient key={`rg-${sr.key}`} id={`rib-${sr.key}`} x1="0" y1="0" x2="1" y2="0">
+            <linearGradient key={`rg-${sr.key}`} id={`${uid}-rib-${sr.key}`} x1="0" y1="0" x2="1" y2="0">
               <stop offset="0%" stopColor={sr.color} stopOpacity={t.mode === "light" ? 0.3 : 0.22} />
               <stop offset="50%" stopColor={sr.color} stopOpacity={t.mode === "light" ? 0.45 : 0.32} />
               <stop offset="100%" stopColor={sr.color} stopOpacity={t.mode === "light" ? 0.3 : 0.22} />
@@ -267,7 +278,7 @@ const RibbonStackChart = memo((props) => {
         ))}
 
         {ribbons.map((r) => (
-          <path key={r.key} d={r.d} fill={`url(#rib-${r.seriesKey})`} opacity={hover == null ? 1 : 0.5} />
+          <path key={r.key} d={r.d} fill={`url(#${uid}-rib-${r.seriesKey})`} opacity={hover == null ? 1 : 0.5} />
         ))}
 
         {periods.map((p) => {
@@ -296,7 +307,7 @@ const RibbonStackChart = memo((props) => {
                           width={barW}
                           height={s.drawH}
                           rx={Math.min(7, s.drawH / 2)}
-                          fill={`url(#bar-${s.key})`}
+                          fill={`url(#${uid}-bar-${s.key})`}
                         />
                         {detailed && s.drawH >= 14 && (
                           <text

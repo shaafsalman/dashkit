@@ -1,5 +1,5 @@
-import React, { useMemo, memo, useState } from "react";
-import { resolveTheme } from "./theme";
+import React, { useMemo, memo, useState, useId } from "react";
+import { resolveTheme, arcPath as sharedArc } from "./theme";
 import { ChartCard, ChartTooltip, Stat } from "./chrome";
 
 /**
@@ -12,7 +12,8 @@ import { ChartCard, ChartTooltip, Stat } from "./chrome";
 const VBW = 320;
 const VBH = 232;
 const CX = 160;
-const CY = 140;
+// arc spans CY-R-SW/2 .. CY+R*sin30+SW/2 (+ endpoint labels) — centred in VBH
+const CY = 144;
 const R = 120;
 const SW = 16;
 const START = 210;
@@ -20,13 +21,8 @@ const END = -30;
 
 const rad = (d) => (d * Math.PI) / 180;
 const P = (r, d) => [CX + r * Math.cos(rad(d)), CY - r * Math.sin(rad(d))];
-const arc = (a0, a1) => {
-  const pts = [];
-  const dir = a1 <= a0 ? -1 : 1;
-  for (let a = a0; dir < 0 ? a >= a1 : a <= a1; a += dir * 2) pts.push(P(R, a));
-  pts.push(P(R, a1));
-  return pts.map((p, i) => `${i ? "L" : "M"} ${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(" ");
-};
+// true SVG arc (y-up degrees -> theme.arcPath's y-down degrees)
+const arc = (a0, a1) => sharedArc(CX, CY, R, -a0, -a1);
 // angle along the gauge for a given 0..100 value
 const angleFor = (v) => START - (Math.min(Math.max(v, 0), 100) / 100) * (START - END);
 
@@ -54,6 +50,8 @@ const GaugeCard = memo(
     className = "",
   }) => {
     const t = resolveTheme(theme || DEFAULT_THEME, "dark");
+    if (t.mono) { from = t.series[1]; to = t.series[0]; knobColor = t.series[0]; }
+    const uid = useId().replace(/:/g, "");
     const [hover, setHover] = useState(false);
 
     const v = Math.min(Math.max(value, 0), 100);
@@ -83,7 +81,7 @@ const GaugeCard = memo(
           style={{ maxWidth: 520 }}
         >
           <defs>
-            <linearGradient id="gc-prog" x1="0" y1="0" x2="1" y2="0">
+            <linearGradient id={`${uid}-prog`} x1="0" y1="0" x2="1" y2="0">
               <stop offset="0%" stopColor={from} />
               <stop offset="100%" stopColor={to} />
             </linearGradient>
@@ -95,7 +93,7 @@ const GaugeCard = memo(
           <path
             d={arc(START, progEnd)}
             fill="none"
-            stroke="url(#gc-prog)"
+            stroke={`url(#${uid}-prog)`}
             strokeWidth={SW}
             strokeLinecap="round"
             style={{ filter: hover ? `drop-shadow(0 0 6px ${to}aa)` : "none" }}
@@ -127,7 +125,7 @@ const GaugeCard = memo(
           {/* knob */}
           <circle
             cx={knob[0]} cy={knob[1]} r={hover ? 13 : 11}
-            fill={knobColor} stroke="#0c2f1b" strokeWidth="2"
+            fill={knobColor} stroke={t.mono ? t.surface : "#0c2f1b"} strokeWidth="2"
           />
 
           {/* The primary value lives in the shared top-right header. Keep the
@@ -139,13 +137,9 @@ const GaugeCard = memo(
             Progress
           </text>
 
-          {/* detailed: min/max endpoint labels */}
-          {detailed && (
-            <>
-              <text x={P(R, START)[0]} y={P(R, START)[1] + 22} textAnchor="middle" fontSize="12" fill={t.text.secondary}>0%</text>
-              <text x={P(R, END)[0]} y={P(R, END)[1] + 22} textAnchor="middle" fontSize="12" fill={t.text.secondary}>100%</text>
-            </>
-          )}
+          {/* endpoint scale labels, mirrored under both arc ends */}
+          <text x={P(R, START)[0]} y={P(R, START)[1] + SW / 2 + 16} textAnchor="middle" fontSize="12" fontWeight="600" fill={t.text.muted}>0%</text>
+          <text x={P(R, END)[0]} y={P(R, END)[1] + SW / 2 + 16} textAnchor="middle" fontSize="12" fontWeight="600" fill={t.text.muted}>100%</text>
 
           {/* hover capture over the gauge band */}
           <path

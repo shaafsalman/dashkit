@@ -1,5 +1,5 @@
-import React, { useMemo, useState, memo } from "react";
-import { resolveTheme, lighten, contrastingText } from "./theme";
+import React, { useMemo, useState, memo, useId } from "react";
+import { resolveTheme, lighten, contrastingText, seriesColor } from "./theme";
 import { ChartCard, ChartTooltip, Legend } from "./chrome";
 
 /**
@@ -15,12 +15,23 @@ import { ChartCard, ChartTooltip, Legend } from "./chrome";
 const VBW = 360;
 const VBH = 320;
 const PALETTE = ["#6d5ae6", "#3aa0f4", "#4fd1b0", "#56e0a6", "#5b4fd6"];
-const SLOTS = [90, 30, -30, -150, 150];
+// Petals sit on the hexagon's edges (edge normals at 90, 30, -30, ...). For a
+// given metric count pick the edges that keep the flower balanced: mirrored
+// about the vertical axis and centred on the hub.
+const SLOTS_BY_COUNT = {
+  1: [90],
+  2: [90, -90],
+  3: [90, -30, 210],
+  4: [30, 150, 210, 330],
+  5: [90, 30, -30, 210, 150],
+  6: [90, 30, -30, -90, 210, 150],
+};
 const CX = 180;
-const CY = 168;
-const HEX_R = 60;
-const BASE_LEN = 86;
-const GAP_DEG = 5;
+const CY = 160;
+const HEX_R = 52;
+const BASE_LEN = 92;
+const GAP = 5; // px gap between hub, petals and neighbouring petals
+const TAN30 = Math.tan(Math.PI / 6);
 const DEFAULT_THEME = { base: "dark", surface: "#0f1420", radius: 20, pad: 24 };
 
 const DEFAULT_METRICS = [
@@ -39,6 +50,13 @@ const SORTS = [
 
 const rad = (d) => (d * Math.PI) / 180;
 const P = (r, d) => [CX + r * Math.cos(rad(d)), CY - r * Math.sin(rad(d))];
+// point at distance `d` along the edge normal `phi`, shifted `w` along the edge
+const E = (phi, d, w) => {
+  const n = [Math.cos(rad(phi)), -Math.sin(rad(phi))];
+  const tg = [-n[1], n[0]];
+  return [CX + d * n[0] + w * tg[0], CY + d * n[1] + w * tg[1]];
+};
+const safeId = (v) => String(v).replace(/[^a-zA-Z0-9_-]/g, "_");
 
 const HexHealthChart = memo(
   ({
@@ -59,6 +77,7 @@ const HexHealthChart = memo(
   }) => {
     const t = resolveTheme(theme || DEFAULT_THEME, "dark");
 
+    const uid = useId().replace(/:/g, "");
     const [sort, setSort] = useState("none");
     const [hover, setHover] = useState(null); // hovered petal key
     const [off, setOff] = useState({}); // { [key]: true } => hidden
@@ -73,7 +92,7 @@ const HexHealthChart = memo(
     const hubLabelFill = onBrand ? "#cbd5e1" : t.text.muted;
 
     const ordered = useMemo(() => {
-      const arr = metrics.slice(0, 5);
+      const arr = metrics.slice(0, 6);
       if (sort === "none") return arr;
       const a = arr.slice();
       a.sort((x, y) => (sort === "desc" ? y.value - x.value : x.value - y.value));
@@ -82,26 +101,31 @@ const HexHealthChart = memo(
 
     const petals = useMemo(
       () =>
-        ordered.map((m, i) => {
-          const phi = SLOTS[i];
-          const color = m.color || (onBrand ? t.series[i % t.series.length] : PALETTE[i % PALETTE.length]);
-          const len = BASE_LEN * (0.62 + 0.38 * (Math.min(m.value, 100) / 100));
-          const a0 = phi - 30 + GAP_DEG;
-          const a1 = phi + 30 - GAP_DEG;
-          const ri = HEX_R + 3;
-          const ro = HEX_R + len;
-          const A = P(ri, a0), B = P(ri, a1), C = P(ro, a1), D = P(ro, a0);
-          const L = P(HEX_R + len * 0.52, phi);
+        ordered.map((m, i, all) => {
+          const phi = SLOTS_BY_COUNT[all.length][i];
+          const color = onBrand && !m.color ? t.series[i % t.series.length] : seriesColor(t, m.color, i, PALETTE[i % PALETTE.length]);
+          // Trapezoid on the hex-ring: inner edge parallel to the hub's edge,
+          // sides along the 60deg wedge so neighbours keep an even gap.
+          const len = BASE_LEN * (0.55 + 0.45 * (Math.min(Math.max(m.value, 0), 100) / 100));
+          const apothem = HEX_R * Math.cos(Math.PI / 6);
+          const di = apothem + GAP;
+          const dout = di + len;
+          const side = GAP / 2 / Math.cos(Math.PI / 6);
+          const wi = di * TAN30 - side;
+          const wo = dout * TAN30 - side;
+          const A = E(phi, di, -wi), B = E(phi, di, wi), C = E(phi, dout, wo), D = E(phi, dout, -wo);
+          const L = E(phi, di + len * 0.5, 0);
           return {
             ...m,
             color,
+            gid: `${uid}-hex-${i}-${safeId(m.label || i)}`,
             d: `M ${A} L ${B} L ${C} L ${D} Z`,
             lx: L[0],
             ly: L[1],
             key: m.label || i,
           };
         }),
-      [ordered, onBrand, t.series]
+      [ordered, onBrand, t.series, t.mono, t.customSeries, uid]
     );
 
     const hexPts = useMemo(
@@ -130,10 +154,10 @@ const HexHealthChart = memo(
       const hv = hover != null ? petals.find((p) => p.key === hover && !off[p.key]) : null;
       return (
         <div style={{ position: "relative" }}>
-          <svg viewBox={`0 0 ${VBW} ${VBH}`} width="100%" role="img" aria-label={`${title}: ${overall}`}>
+          <svg viewBox={`0 0 ${VBW} ${VBH}`} width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`${title}: ${overall}`}>
             <defs>
               {petals.map((p) => (
-                <linearGradient key={`g-${p.key}`} id={`hex-${p.key}`} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient key={`g-${p.key}`} id={p.gid} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={lighten(p.color, 0.18)} />
                   <stop offset="100%" stopColor={p.color} />
                 </linearGradient>
@@ -159,9 +183,9 @@ const HexHealthChart = memo(
                 >
                   <path
                     d={p.d}
-                    fill={`url(#hex-${p.key})`}
+                    fill={`url(#${p.gid})`}
                     stroke={p.color}
-                    strokeWidth="9"
+                    strokeWidth="6"
                     strokeLinejoin="round"
                   />
                   <text
@@ -193,9 +217,9 @@ const HexHealthChart = memo(
             <polygon points={hexPts} fill={hubFill} stroke={hubStroke} strokeWidth="1.5" />
             <text
               x={CX}
-              y={CY - 2}
+              y={CY + 6}
               textAnchor="middle"
-              fontSize={detailed ? "44" : "40"}
+              fontSize={detailed ? "40" : "36"}
               fontWeight="800"
               fill={hubValueFill}
             >
@@ -203,9 +227,9 @@ const HexHealthChart = memo(
             </text>
             <text
               x={CX}
-              y={CY + 18}
+              y={CY + 24}
               textAnchor="middle"
-              fontSize="11"
+              fontSize="10"
               fontWeight="500"
               fill={hubLabelFill}
             >

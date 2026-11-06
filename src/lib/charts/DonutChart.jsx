@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback, memo } from "react";
 import { ChevronRight } from "lucide-react";
-import { resolveTheme, arcPath, polar } from "./theme";
+import { resolveTheme, arcPath, polar, toneColor } from "./theme";
 import { ChartCard, ChartTooltip, Stat } from "./chrome";
 import { useMeasuredBox } from "./useMeasuredBox";
 import { compactNumber } from "./format";
@@ -88,7 +88,7 @@ const ScrollLegend = ({ theme: t, items, onToggle }) => {
 // as a distinct surface from the ring, and scrolls internally rather than
 // spilling past the card once it has more items than fit.
 const VerticalLegend = ({ theme: t, items, onToggle, heading = "Breakdown" }) => (
-  <div style={{ display: "flex", flexDirection: "column", minWidth: 0, height: "100%", minHeight: 0 }}>
+  <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0, height: "100%", minHeight: 0 }}>
     {heading && (
       <div
         style={{
@@ -101,7 +101,7 @@ const VerticalLegend = ({ theme: t, items, onToggle, heading = "Breakdown" }) =>
     )}
     <div
       style={{
-        flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto",
+        flex: "0 1 auto", minHeight: 0, minWidth: 0, overflowY: "auto",
         background: t.mode === "light" ? "rgba(15,23,42,0.035)" : "rgba(255,255,255,0.05)",
         border: `1px solid ${t.mode === "light" ? "rgba(15,23,42,0.06)" : "rgba(255,255,255,0.08)"}`,
         borderRadius: 10, padding: "8px 10px",
@@ -166,7 +166,7 @@ const DonutChart = memo(
 
     // resolve a stable color per segment (by index, like the original)
     const colored = useMemo(
-      () => segments.map((s, i) => ({ ...s, color: s.color || t.series[i % t.series.length] })),
+      () => segments.map((s, i) => ({ ...s, color: toneColor(t, s.color || t.series[i % t.series.length], i) })),
       [segments, t.series]
     );
 
@@ -181,7 +181,9 @@ const DonutChart = memo(
       const active = colored.filter(isActive);
       const sum = active.reduce((acc, x) => acc + x.value, 0) || 1;
       let a = -90;
-      const gap = active.length > 1 ? 4 : 0;
+      // butt-capped segments with an even 1.6deg gap: round caps overlapped
+      // their neighbours and swallowed small slices
+      const gap = active.length > 1 ? 1.6 : 0;
       const arcs = active.map((s) => {
         const pct = s.value / sum;
         const sweep = pct * 360;
@@ -399,7 +401,7 @@ const DonutChart = memo(
               style={{
                 flex: detailed ? "none" : 1, minHeight: 0, minWidth: 0, width: "100%",
                 display: "flex", flexDirection: landscape ? "row" : "column",
-                alignItems: "center", justifyContent: landscape ? "flex-start" : "center",
+                alignItems: "center", justifyContent: "center",
                 gap: landscape ? LEGEND_GAP : 0,
               }}
             >
@@ -421,7 +423,7 @@ const DonutChart = memo(
                         fill="none"
                         stroke={a.color}
                         strokeWidth={thickness}
-                        strokeLinecap="round"
+                        strokeLinecap="butt"
                         opacity={dim ? 0.4 : 1}
                         style={{ cursor: "pointer" }}
                         onMouseEnter={() => setHover(i)}
@@ -431,8 +433,11 @@ const DonutChart = memo(
                     );
                   })}
 
-                  <text x={C} y={C + 4} textAnchor="middle" fontSize="13" fontWeight="700" fill={t.text.muted}>
-                    {centerLabel}
+                  <text x={C} y={C + 6} textAnchor="middle" fontSize="28" fontWeight="800" letterSpacing="-0.8" fill={t.text.primary}>
+                    {hovered ? fmtPct(hovered.pct) : total ?? fmt(sum)}
+                  </text>
+                  <text x={C} y={C + 26} textAnchor="middle" fontSize="11" fontWeight="600" letterSpacing="0.6" fill={t.text.muted}>
+                    {(hovered ? hovered.label : centerLabel).toUpperCase()}
                   </text>
                 </svg>
 
@@ -451,7 +456,7 @@ const DonutChart = memo(
               </div>
 
               {landscape && (
-                <div style={{ flex: 1, minWidth: 0, height: "100%", maxWidth: measuredBox.width - ringPx - LEGEND_GAP }}>
+                <div style={{ flex: "0 1 300px", minWidth: 0, height: "100%", maxWidth: measuredBox.width - ringPx - LEGEND_GAP }}>
                   <VerticalLegend theme={t} items={legendItems} onToggle={toggle} />
                 </div>
               )}

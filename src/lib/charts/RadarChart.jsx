@@ -1,5 +1,5 @@
 import React, { useMemo, useState, memo } from "react";
-import { resolveTheme, polar } from "./theme";
+import { resolveTheme, polar, toneColor } from "./theme";
 import { ChartCard, ChartTooltip } from "./chrome";
 
 /**
@@ -43,7 +43,7 @@ const RadarChart = memo(
     className = "",
   }) => {
     const t = resolveTheme(theme, "dark");
-    const color = accent || t.accent;
+    const color = toneColor(t, accent || t.accent, 0);
 
     const [sort, setSort] = useState("none");
     const [hover, setHover] = useState(null); // index of hovered vertex

@@ -6,7 +6,7 @@
  * and accents stay consistent.
  */
 
-import { isDarkMode } from "../../isDarkMode";
+import { isDarkMode, isMonotone } from "../../isDarkMode";
 
 // ---------------------------------------------------------------------------
 // Color parsing. Inputs come from props AND from getComputedStyle, and modern
@@ -213,12 +213,24 @@ export const polar = (cx, cy, r, deg) => {
   const a = (deg * Math.PI) / 180;
   return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
 };
-export const arcPath = (cx, cy, r, a0, a1, step = 2) => {
+// True SVG elliptical-arc commands (not a sampled polyline), so large rings
+// stay perfectly round at any zoom. Sweeps >= 360deg are split in two because
+// a single arc command can't describe a closed circle.
+export const arcPath = (cx, cy, r, a0, a1) => {
   const dir = a1 >= a0 ? 1 : -1;
-  const pts = [];
-  for (let a = a0; dir > 0 ? a <= a1 : a >= a1; a += dir * step) pts.push(polar(cx, cy, r, a));
-  pts.push(polar(cx, cy, r, a1));
-  return pts.map((p, i) => `${i ? "L" : "M"} ${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(" ");
+  let span = Math.abs(a1 - a0);
+  if (span < 1e-6) return "";
+  const f = (p) => `${p[0].toFixed(2)} ${p[1].toFixed(2)}`;
+  const parts = [`M ${f(polar(cx, cy, r, a0))}`];
+  let from = a0;
+  while (span > 1e-6) {
+    const step = Math.min(span, 180);
+    const to = from + dir * step;
+    parts.push(`A ${r} ${r} 0 0 ${dir > 0 ? 1 : 0} ${f(polar(cx, cy, r, to))}`);
+    from = to;
+    span -= step;
+  }
+  return parts.join(" ");
 };
 
 // brand series palette (deep purple -> teal). Reuse for stacked series.
@@ -281,6 +293,87 @@ export const DARK_THEME = {
 const PRESETS = { light: LIGHT_THEME, dark: DARK_THEME };
 
 /**
+ * Greyscale series ramps. Both are ordered most-prominent first and stay
+ * distinguishable by lightness alone (no hue), for strictly monotone UIs.
+ *  - on a DARK surface: white -> mid grey
+ *  - on a LIGHT surface: black -> light grey
+ */
+export const MONO_SERIES_ON_DARK = ["#ffffff", "#a3a3a3", "#525252", "#d4d4d4", "#737373", "#3a3a3a"];
+export const MONO_SERIES_ON_LIGHT = ["#000000", "#737373", "#d4d4d4", "#404040", "#a3a3a3", "#e5e5e5"];
+
+const mono = (ink, surface, border, scheme) => {
+  const a = (alpha) => `rgba(${ink},${alpha})`;
+  const strong = scheme === "dark" ? "#ffffff" : "#000000";
+  return {
+    mode: scheme,
+    mono: true,
+    surface,
+    border,
+    backdrop: "none",
+    accent: strong,
+    text: scheme === "dark"
+      ? { primary: "#ffffff", secondary: "#d4d4d4", muted: "#a3a3a3" }
+      : { primary: "#000000", secondary: "#404040", muted: "#737373" },
+    track: a(scheme === "dark" ? 0.12 : 0.08),
+    grid: a(scheme === "dark" ? 0.1 : 0.12),
+    control: {
+      bg: a(scheme === "dark" ? 0.07 : 0.05),
+      border: a(scheme === "dark" ? 0.16 : 0.16),
+      text: scheme === "dark" ? "#d4d4d4" : "#404040",
+      hover: a(scheme === "dark" ? 0.16 : 0.1),
+    },
+    tooltip: { bg: surface, border: a(0.2) },
+    // Axis/tick colours are CSS custom properties the host normally defines
+    // page-wide. A card whose surface differs from the page (inverse) must
+    // re-scope them; ChartCard applies this map on its root element.
+    vars: {
+      "--chart-grid": a(scheme === "dark" ? 0.1 : 0.12),
+      "--chart-tick": scheme === "dark" ? "#d4d4d4" : "#404040",
+      "--chart-tick-dim": scheme === "dark" ? "#a3a3a3" : "#737373",
+      "--chart-tick-strong": strong,
+    },
+  };
+};
+
+/**
+ * Monotone surface variants, resolved against the live dark-mode state.
+ *  - "mono":    follows the page. dark = near-black + white ink; light = white + black ink.
+ *  - "inverse": the contrast card. dark = WHITE fill + black ink; light = BLACK fill + white ink.
+ */
+export const monoVariant = (variant, dark) => {
+  if (variant === "mono") {
+    return dark
+      ? mono("255,255,255", "#000000", "rgba(255,255,255,0.14)", "dark")
+      : mono("0,0,0", "#ffffff", "rgba(0,0,0,0.12)", "light");
+  }
+  if (variant === "inverse") {
+    return dark
+      ? mono("0,0,0", "#ffffff", "rgba(0,0,0,0.12)", "light")
+      : mono("255,255,255", "#000000", "rgba(255,255,255,0.14)", "dark");
+  }
+  return null;
+};
+
+export const monoSeries = (surfaceScheme) =>
+  surfaceScheme === "dark" ? MONO_SERIES_ON_DARK : MONO_SERIES_ON_LIGHT;
+
+/**
+ * The one colour gate every chart uses for a data colour: the caller's colour
+ * normally, the i-th step of the greyscale ramp in monotone mode — so series
+ * stay distinguishable by lightness instead of collapsing to one grey.
+ */
+export const toneColor = (t, color, i = 0) =>
+  t.mono ? t.series[i % t.series.length] : color;
+
+/**
+ * Colour for series `i` of a chart that ships its own default palette:
+ * explicit per-item colour > the theme's palette when one was passed >
+ * the chart's designed default. Monotone always wins (greyscale ramp).
+ */
+export const seriesColor = (t, explicit, i, fallback) =>
+  toneColor(t, explicit || (t.customSeries ? t.series[i % t.series.length] : fallback), i);
+
+/**
  * Resolve a theme prop into a full token object.
  *
  * Color scheme (light vs dark) always comes from the app's real, live dark-mode
@@ -304,8 +397,35 @@ const PRESETS = { light: LIGHT_THEME, dark: DARK_THEME };
  * light/dark base, instead of being stripped like the top-level fields are.
  */
 export const resolveTheme = (theme, fallbackMode = "dark") => {
-  const base = PRESETS[isDarkMode() ? "dark" : "light"];
+  const dark = isDarkMode();
+  const base = PRESETS[dark ? "dark" : "light"];
+  // Accept "mono" / "inverse" strings and { preset: "mono", inverse?: true }.
+  if (theme === "mono" || theme === "inverse") theme = { variant: theme };
+  // Page-wide monotone switch (setChartTone("mono")): every chart goes black &
+  // white unless it explicitly opts out with { tone: "color" }. Structural
+  // fields (radius, pad, ...) survive; colour fields are replaced by the
+  // greyscale tokens below.
+  if (isMonotone() && !(theme && typeof theme === "object" && theme.tone === "color")) {
+    const obj = theme && typeof theme === "object" ? theme : {};
+    theme = { ...obj, series: undefined, variant: obj.variant === "inverse" ? "inverse" : "mono" };
+  }
+  if (theme && typeof theme === "object" && theme.preset === "mono" && !theme.variant) {
+    theme = { ...theme, variant: theme.inverse ? "inverse" : "mono" };
+  } else if (theme && typeof theme === "object" && theme.inverse && theme.variant === "mono") {
+    theme = { ...theme, variant: "inverse" };
+  }
   if (!theme || typeof theme !== "object") return base;
+  const variantTokens = monoVariant(theme.variant, dark);
+  if (variantTokens) {
+    const { variant: _variant, preset: _preset, inverse: _inverse, solid: _solid, base: _b, mode: _m, surface: _s, border: _bo, track: _t, grid: _g, text: _tx, control: _c, frame, series, ...rest } = theme;
+    const resolved = {
+      ...base,
+      ...rest,
+      ...variantTokens,
+      series: series === "mono" || !series ? monoSeries(variantTokens.mode) : series,
+    };
+    return frame ? { ...resolved, border: frame.border ?? resolved.border } : resolved;
+  }
   const {
     base: _base,
     mode: _mode,
@@ -317,6 +437,9 @@ export const resolveTheme = (theme, fallbackMode = "dark") => {
     control: _control,
     solid,
     frame,
+    variant: _variant,
+    preset: _preset,
+    inverse: _inverse,
     ...structural
   } = theme;
   const resolved = {
@@ -324,7 +447,12 @@ export const resolveTheme = (theme, fallbackMode = "dark") => {
     ...structural,
     text: base.text,
     control: base.control,
-    series: theme.series || base.series,
+    series: theme.series === "mono"
+      ? monoSeries(solid?.mode || base.mode)
+      : theme.series || base.series,
+    // charts with their own designed default colours defer to an explicit
+    // theme palette (see seriesColor) instead of silently ignoring it
+    customSeries: Array.isArray(theme.series),
   };
   if (!solid) return frame ? { ...resolved, border: frame.border ?? resolved.border } : resolved;
   const solidResolved = {

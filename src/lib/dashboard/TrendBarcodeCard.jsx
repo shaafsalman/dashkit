@@ -30,7 +30,12 @@ export function TrendBarcodeCard({
     const series = MORD.map((label) => ({ label, value: byMonth[label] ?? null }));
     let last = -1;
     series.forEach((d, i) => { if (d.value != null && d.value > 0) last = i; });
-    return { series, last, max: Math.max(1, ...series.map((d) => d.value || 0)) };
+    // Round the ceiling up to a "nice" number so the 4 gridline steps land on
+    // clean values (0 / 750 / 1.5K / 2.25K / 3K) instead of 729.3-style ticks.
+    const raw = Math.max(1, ...series.map((d) => d.value || 0));
+    const mag = 10 ** Math.floor(Math.log10(raw));
+    const nice = [1, 1.2, 1.6, 2, 2.4, 4, 6, 8, 10].find((m) => m * mag >= raw) * mag;
+    return { series, last, max: nice };
   }, [months]);
 
   const hasData = data.last >= 1;
@@ -40,8 +45,8 @@ export function TrendBarcodeCard({
   const W = Math.max(240, box.width);
   const H = Math.max(90, box.height);
   const plotLeft = 40;
-  const plotRight = 6;
-  const baseline = H - 4;
+  const plotRight = 14;
+  const baseline = H - 20; // month labels sit under the baseline, at each point's x
   const top = 18;
   const plotWidth = Math.max(1, W - plotLeft - plotRight);
   const xOf = (i) => plotLeft + (i * plotWidth) / 11;
@@ -160,6 +165,21 @@ export function TrendBarcodeCard({
                 )}
 
                 {data.series.map((d, i) => (
+                  <text
+                    key={`m-${d.label}`}
+                    x={xOf(i)}
+                    y={H - 4}
+                    textAnchor="middle"
+                    style={{ ...MONO }}
+                    fontSize="10"
+                    fontWeight={hover === i ? 700 : 500}
+                    fill={i > data.last ? t.text.muted : hover === i ? t.text.primary : t.text.secondary}
+                  >
+                    {d.label}
+                  </text>
+                ))}
+
+                {data.series.map((d, i) => (
                   <rect
                     key={d.label}
                     x={xOf(i) - plotWidth / 22} y="0" width={plotWidth / 11} height={H}
@@ -204,23 +224,6 @@ export function TrendBarcodeCard({
               </div>
             )}
           </div>
-
-          {hasData && (
-            <div style={{ display: "flex", flexShrink: 0 }}>
-              {data.series.map((d, i) => (
-                <span
-                  key={d.label}
-                  style={{
-                    ...MONO, flex: 1, textAlign: "center", fontSize: 8.5,
-                    fontWeight: hover === i ? 700 : 400,
-                    color: i > data.last ? t.text.muted : hover === i ? t.text.primary : t.text.secondary,
-                  }}
-                >
-                  {d.label}
-                </span>
-              ))}
-            </div>
-          )}
 
           <div style={{ display: "flex", alignItems: "center", gap: 18, paddingTop: 12, marginTop: 8, borderTop: `1px solid ${t.control.border}`, flexShrink: 0, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>

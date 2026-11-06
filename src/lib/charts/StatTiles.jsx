@@ -1,6 +1,7 @@
-import React, { memo } from "react";
-import { resolveTheme } from "./theme";
+import React, { memo, useId } from "react";
+import { resolveTheme, toneColor } from "./theme";
 import { ChartCard, ChangePill } from "./chrome";
+import { useMeasuredBox } from "./useMeasuredBox";
 
 /**
  * StatTiles — responsive grid of KPI tiles, each with a value, delta and sparkline.
@@ -41,14 +42,20 @@ const StatTiles = memo(
     className = "",
   }) => {
     const t = resolveTheme(theme, "dark");
+    const uid = useId().replace(/:/g, "");
     const onBrand = String(t.text.primary).toLowerCase() === "#ffffff";
+    // Balanced columns: as many as fit at >=180px, then evened out so rows are
+    // full (4 tiles -> 4x1 or 2x2, never 3 + an orphan).
+    const [gridRef, gridBox] = useMeasuredBox({ width: 560, height: 200 });
+    const fit = Math.max(1, Math.floor((gridBox.width + 12) / (180 + 12)));
+    const cols = Math.min(tiles.length, Math.ceil(tiles.length / Math.ceil(tiles.length / fit)));
     const tileBg = onBrand ? "rgba(255,255,255,0.12)" : t.mode === "light" ? "#f6f8fb" : "rgba(255,255,255,0.03)";
 
     return (
       <ChartCard theme={t} title={title} subtitle={subtitle} controls={controls} onControl={onControl} width={width} size={size} className={className} floatingHeader headline={{ value: tiles[0]?.value ?? "—" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, height: "100%", minHeight: 0 }}>
+        <div ref={gridRef} style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridAutoRows: "1fr", gap: 12, height: "100%", minHeight: 0 }}>
           {tiles.map((tile, i) => {
-            const color = tile.color || t.series[i % t.series.length];
+            const color = toneColor(t, tile.color || t.series[i % t.series.length], i);
             const { line, area } = sparkPath(tile.spark, SH);
             return (
               <div key={tile.label} style={{ background: tileBg, borderRadius: 14, padding: 16, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
@@ -59,16 +66,17 @@ const StatTiles = memo(
                   </div>
                   <ChangePill theme={t} value={tile.change} />
                 </div>
-                <div style={{ marginTop: "auto", paddingTop: 18, height: 112, minHeight: 74 }}>
+                {/* sparkline grows into the tile's spare height (no dead gap under the value) */}
+                <div style={{ flex: 1, paddingTop: 14, minHeight: 56, maxHeight: 200 }}>
                   <svg viewBox={`0 0 ${SW} ${SH}`} width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true">
                     <defs>
-                      <linearGradient id={`st-${i}`} x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id={`${uid}-st-${i}`} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor={color} stopOpacity="0.35" />
                         <stop offset="100%" stopColor={color} stopOpacity="0" />
                       </linearGradient>
                     </defs>
-                    <path d={area} fill={`url(#st-${i})`} />
-                    <path d={line} fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" />
+                    <path d={area} fill={`url(#${uid}-st-${i})`} />
+                    <path d={line} fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
                   </svg>
                 </div>
               </div>

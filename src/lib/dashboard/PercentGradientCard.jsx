@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { ChartCard, resolveTheme } from "../charts";
-import { MONO, spline, GRADIENTS } from "./_shared.jsx";
+import { MONO, spline, GRADIENTS, gradientFill } from "./_shared.jsx";
 
 /* ── PERCENT GRADIENT CARD ───────────────────────────────────────────────────
  * One big percentage on a warm gradient, with the month-by-month series drawn
@@ -32,7 +32,7 @@ export function PercentGradientCard({
     <div
       style={{
         height: "100%",
-        background: GRADIENTS[gradient] || gradient,
+        background: gradientFill(gradient),
         padding: 18,
         display: "flex",
         flexDirection: "column",

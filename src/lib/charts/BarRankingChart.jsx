@@ -1,5 +1,5 @@
 import React, { useMemo, useState, memo } from "react";
-import { resolveTheme } from "./theme";
+import { resolveTheme, toneColor } from "./theme";
 import { ChartCard } from "./chrome";
 import { compactNumber } from "./format";
 
@@ -83,7 +83,7 @@ const BarRankingChart = memo(
             <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
               {rows.map((it, i) => {
                 const pct = Math.max((it.value / max) * 100, 1.5);
-                const color = it.color || t.accent;
+                const color = toneColor(t, it.color || t.accent, 0);
                 const on = hover === i;
                 return (
                   <div

@@ -2,6 +2,7 @@ import React, { useMemo, useState, memo } from "react";
 import { resolveTheme, AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_GRID_PROPS } from "./theme";
 import { ChartCard, Legend, ChartTooltip } from "./chrome";
 import { compactNumber } from "./format";
+import { useMeasuredBox } from "./useMeasuredBox";
 
 /**
  * WaterfallChart — running total with increases/decreases and a final bar.
@@ -12,12 +13,24 @@ import { compactNumber } from "./format";
  *  - legend + filter control toggle inc / dec / total visibility
  *  - detailed mode: running total above every bar, gridlines, value-axis + data table
  */
-const W = 640;
-const PT = 30;
-const BASE = 270;
-const VBH = BASE + 30;
-const PL = 20;
-const PR = 20;
+// Plot geometry is in real pixels of the measured box (see useMeasuredBox), so
+// labels keep one readable size from a phone column to a wide monitor
+// instead of shrinking/growing with a fixed viewBox.
+const PT = 28; // room for the value label above the tallest bar
+const PB = 26; // room for category labels under the baseline
+const PX = 6;
+const MAX_BAR = 72;
+
+// Accepts `items` ({label,value,type}) or the looser `data` shape
+// ({label,value,isTotal}, signed deltas; the first row is the opening total).
+const normalizeItems = (items, data) => {
+  if (!data) return items;
+  return data.map((d, i) => ({
+    label: d.label,
+    value: Math.abs(d.value),
+    type: d.type || (d.isTotal || i === 0 ? "total" : d.value < 0 ? "dec" : "inc"),
+  }));
+};
 
 const TYPE_META = [
   { key: "inc", label: "Increase" },
@@ -34,7 +47,8 @@ const WaterfallChart = memo(
     theme,
     controls,
     onControl,
-    items = [
+    data,
+    items: itemsProp = [
       { label: "Start", value: 20, type: "total" },
       { label: "Sales", value: 38, type: "inc" },
       { label: "Refunds", value: 12, type: "dec" },
@@ -49,6 +63,14 @@ const WaterfallChart = memo(
     className = "",
   }) => {
     const t = resolveTheme(theme, "dark");
+    const items = useMemo(() => normalizeItems(itemsProp, data), [itemsProp, data]);
+    const [boxRef, box] = useMeasuredBox({ width: 520, height: 240 });
+    const W = box.width;
+    const VBH = box.height;
+    const BASE = VBH - PB;
+    const PL = PX;
+    const PR = PX;
+    if (t.mono) { incColor = t.series[1]; decColor = t.series[4]; } // mid grey + light grey, both visible against the black totals
     const fmt = formatValue || compactNumber;
 
     // which bar types are visible (toggled by legend / filter)
@@ -61,7 +83,7 @@ const WaterfallChart = memo(
     const { bars, y } = useMemo(() => {
       const n = items.length;
       const step = (W - PL - PR) / n;
-      const barW = step * 0.56;
+      const barW = Math.min(step * 0.58, MAX_BAR);
       let run = 0;
       const segs = items.map((it) => {
         let start, end, delta;
@@ -87,7 +109,7 @@ const WaterfallChart = memo(
         return { ...s, i, cx, barW, x: cx - barW / 2, yTop: y(top), h: Math.max(y(bot) - y(top), 2), color: colorFor(s.type), connY: y(s.end) };
       });
       return { bars, y };
-    }, [items, t.accent, incColor, decColor]);
+    }, [items, t.accent, incColor, decColor, W, BASE, PL, PR]);
 
     const isOn = (b) => active[b.type] !== false;
     const hb = hover != null ? bars[hover] : null;
@@ -105,8 +127,8 @@ const WaterfallChart = memo(
       ];
 
     const renderBody = ({ detailed }) => (
-      <div style={{ position: "relative" }}>
-        <svg viewBox={`0 0 ${W} ${VBH}`} width="100%" role="img" aria-label={title}>
+      <div ref={detailed ? undefined : boxRef} style={{ position: "relative", height: detailed ? "auto" : size === "fill" ? "100%" : "var(--cc-h)", minHeight: detailed ? 0 : 160 }}>
+        <svg viewBox={`0 0 ${W} ${VBH}`} width="100%" height={detailed ? undefined : "100%"} preserveAspectRatio={detailed ? "xMidYMid meet" : "none"} role="img" aria-label={title}>
           {/* baseline */}
           <line x1={PL} y1={BASE} x2={W - PR} y2={BASE} stroke={t.grid} strokeWidth="1" />
           {/* gridlines + value axis (detailed only) */}
@@ -137,7 +159,7 @@ const WaterfallChart = memo(
                     y={b.yTop}
                     width={b.barW}
                     height={b.h}
-                    rx="5"
+                    rx={Math.min(6, b.barW / 6)}
                     fill={b.color}
                     style={{ transformOrigin: `${b.cx}px ${BASE}px`, transform: hover === i ? "scaleY(1.03)" : "none" }}
                   />
@@ -176,6 +198,7 @@ const WaterfallChart = memo(
         <ChartTooltip
           theme={t}
           visible={hb != null && isOn(hb)}
+          flip={hb != null && hb.yTop < 60}
           left={hb ? `${(hb.cx / W) * 100}%` : "50%"}
           top={hb ? `${(hb.yTop / VBH) * 100}%` : "40%"}
           title={hb?.label}

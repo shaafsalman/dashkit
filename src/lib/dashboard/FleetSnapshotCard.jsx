@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Plane } from "lucide-react";
 import { ChartCard, resolveTheme } from "../charts";
-import { useMeasuredBox, MONO, GRADIENTS } from "./_shared.jsx";
+import { useMeasuredBox, MONO, GRADIENTS, gradientFill } from "./_shared.jsx";
 
 const SHORT_ENTER = 250; // become "short" below this measured height...
 const SHORT_EXIT = 262; // ...and only leave it above this one
@@ -35,7 +35,7 @@ export function FleetSnapshotCard({
       style={{
         position: "relative",
         height: "100%",
-        background: GRADIENTS[gradient] || gradient,
+        background: gradientFill(gradient),
         padding: pad,
         display: "flex",
         flexDirection: "column",

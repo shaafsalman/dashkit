@@ -4,6 +4,7 @@
  * (e.g. GRADIENTS from GradientStatCard).
  */
 import { useState, useEffect, useRef } from "react";
+import { isMonotone } from "../../isDarkMode";
 
 /* Live pixel size of a container. Same idea as lib/charts/useMeasuredBox, kept
  * local so this module doesn't depend on a file that only exists on some
@@ -83,6 +84,11 @@ export const spline = (pts, perSegment) => {
  * Same gradient family the page's KPI tiles and header cards already use, with
  * translucent sub-pills for the supporting figures.
  * ────────────────────────────────────────────────────────────────────────── */
+
+// Gradient-card fill. In monotone mode (setChartTone("mono")) every brand
+// gradient becomes a graphite one, so white-on-colour cards stay legible.
+export const gradientFill = (gradient) =>
+  isMonotone() ? "linear-gradient(135deg,#000000 0%,#2b2b2b 100%)" : GRADIENTS[gradient] || gradient;
 
 export const GRADIENTS = {
   blue: "linear-gradient(135deg,#1D4ED8 0%,#3B82F6 100%)",

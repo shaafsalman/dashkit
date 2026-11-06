@@ -1,6 +1,7 @@
 import React, { useMemo, useState, memo } from "react";
 import { resolveTheme } from "./theme";
 import { ChartCard, ChartTooltip, Stat } from "./chrome";
+import { useMeasuredBox } from "./useMeasuredBox";
 
 /**
  * BarcodeMeterCard — "Anomalies": big %, two KPIs, stylized barcode meter.
@@ -9,8 +10,9 @@ import { ChartCard, ChartTooltip, Stat } from "./chrome";
  * Chrome / theme / controls / detailed-mode unified via ChartCard.
  */
 
-const W = 520;
-const MH = 60;
+// The meter is drawn in real pixels of its measured box: it grows to use the
+// card's spare height (instead of a thin strip floating in empty space) and
+// keeps crisp, evenly spaced ticks at any width.
 const START_X = 96;
 const END_PAD = 6;
 const DEFAULT_THEME = { base: "dark", surface: "#1b1d21", radius: 16, pad: 24 };
@@ -40,6 +42,7 @@ const BarcodeMeterCard = memo(
     className = "",
   }) => {
     const t = resolveTheme(theme || DEFAULT_THEME, "dark");
+    if (t.mono) accent = t.text.primary;
     const [period, setPeriod] = useState("monthly");
     const [hover, setHover] = useState(false);
 
@@ -51,14 +54,20 @@ const BarcodeMeterCard = memo(
       { value: data.total, label: "Total Items" },
     ];
 
+    const [meterRef, meterBox] = useMeasuredBox({ width: 520, height: 92 });
+    const W = Math.max(200, meterBox.width);
+    const MH = Math.max(48, Math.min(meterBox.height, 150));
+    const barH = MH * 0.62; // tall ticks; chips match the short tick height
+    const chipH = barH * 0.86;
     const tickEls = useMemo(() => {
       const gap = (W - START_X - END_PAD) / ticks;
       return Array.from({ length: ticks }, (_, i) => ({
         x: START_X + i * gap + gap / 2,
-        h: 30 + (i % 2 === 0 ? 6 : 0),
+        h: i % 2 === 0 ? barH : chipH,
         lit: (i + 0.5) / ticks <= pct,
       }));
-    }, [ticks, pct]);
+    }, [ticks, pct, W, barH, chipH]);
+    const tickW = Math.max(2, Math.min(5, ((W - START_X - END_PAD) / ticks) * 0.32));
 
     const periodControls = controls ?? [
       {
@@ -85,11 +94,11 @@ const BarcodeMeterCard = memo(
           {kpis[1] && <Stat theme={t} {...kpis[1]} align="right" />}
         </div>
 
-        <div style={{ position: "relative", flex: 1, minHeight: 92, display: "flex", alignItems: "center" }}>
-          <svg viewBox={`0 0 ${W} ${MH}`} width="100%" role="img" aria-label={`${title} meter: ${pctLabel}%`}>
-            <rect x="0" y={MH / 2 - 18} width="22" height="36" rx="4" fill={t.mode === "light" ? "#0f172a" : "#ffffff"} />
-            <rect x="30" y={MH / 2 - 18} width="8" height="36" rx="3" fill={accent} />
-            <rect x="46" y={MH / 2 - 18} width="34" height="36" rx="5" fill={t.mode === "light" ? "#cbd5e1" : "#4a4d52"} />
+        <div ref={detailed ? undefined : meterRef} style={{ position: "relative", flex: 1, minHeight: 92, display: "flex", alignItems: "center" }}>
+          <svg viewBox={`0 0 ${W} ${MH}`} width="100%" height={MH} style={{ maxHeight: "none" }} role="img" aria-label={`${title} meter: ${pctLabel}%`}>
+            <rect x="0" y={MH / 2 - chipH / 2} width="22" height={chipH} rx="5" fill={t.mode === "light" ? "#0f172a" : "#ffffff"} />
+            <rect x="30" y={MH / 2 - chipH / 2} width="8" height={chipH} rx="3" fill={accent} />
+            <rect x="46" y={MH / 2 - chipH / 2} width="34" height={chipH} rx="6" fill={t.mode === "light" ? "#cbd5e1" : "#4a4d52"} />
             {tickEls.map((tk, i) => (
               <line
                 key={i}
@@ -98,7 +107,7 @@ const BarcodeMeterCard = memo(
                 x2={tk.x}
                 y2={MH / 2 + tk.h / 2}
                 stroke={tk.lit ? accent : t.mode === "light" ? "#94a3b8" : "#5a5d63"}
-                strokeWidth="2"
+                strokeWidth={tickW}
                 strokeLinecap="round"
                 opacity={tk.lit ? (hover ? 1 : 0.95) : hover ? 0.4 : 0.5}
               />

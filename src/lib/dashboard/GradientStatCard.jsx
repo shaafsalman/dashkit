@@ -1,6 +1,6 @@
 import { ChartCard, resolveTheme } from "../charts";
 import { useRef } from "react";
-import { useMeasuredBox, MONO, compact, GRADIENTS } from "./_shared.jsx";
+import { useMeasuredBox, MONO, compact, GRADIENTS, gradientFill } from "./_shared.jsx";
 
 const SHORT_ENTER = 250; // become "short" below this measured height...
 const SHORT_EXIT = 262; // ...and only leave it above this one
@@ -47,7 +47,7 @@ export function GradientStatCard({
       style={{
         position: "relative",
         height: "100%",
-        background: GRADIENTS[gradient] || gradient,
+        background: gradientFill(gradient),
         padding: pad,
         display: "flex",
         flexDirection: "column",

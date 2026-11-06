@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useId } from "react";
 import { Fuel } from "lucide-react";
 import { ChartCard, resolveTheme } from "../charts";
 import { MORD, MONO, NEG, polarPt, shortMonth, compact, Empty } from "./_shared.jsx";
@@ -10,6 +10,7 @@ import { MORD, MONO, NEG, polarPt, shortMonth, compact, Empty } from "./_shared.
  * ────────────────────────────────────────────────────────────────────────── */
 export function RadialBladeChart({ theme, title = "Fuel Burn per Flight", icon, iconColor, months = [], unit = "L" }) {
   const t = resolveTheme(theme, "light");
+  const uid = useId().replace(/:/g, "");
   const accent = iconColor || "#F59E0B";
   const onBrand = String(t.text.primary).toLowerCase() === "#ffffff";
   const [hover, setHover] = useState(null);
@@ -45,15 +46,18 @@ export function RadialBladeChart({ theme, title = "Fuel Burn per Flight", icon, 
   // being thrown away. A wider viewBox costs the fan nothing (height still
   // sets the scale) and buys room for the month labels.
   const S_W = 500, S_H = 420, CX = S_W / 2, CY = S_H / 2;
-  const R0 = 100, R1 = 176, SWEEP = 24, SKEW = 9;
+  // No skew: every blade is centred on its own spoke, so the fan is radially
+  // symmetric and each label sits squarely on its blade's axis.
+  const R0 = 100, R1 = 166, SWEEP = 24, SKEW = 0;
   // Labels ride an ELLIPSE, not a circle: wide of the tips left/right where
   // there is spare width, but tight above/below where the viewBox is close.
   // Derived from the viewBox edges (minus a margin for the label's own text
   // box) rather than from R1, so a bigger label font can never clip the top
   // or bottom of the card no matter what radius the blades use.
-  const LABEL_MARGIN = 22;
-  const LRX = CX - LABEL_MARGIN;
-  const LRY = CY - LABEL_MARGIN;
+  // Labels ride one circle just past the longest possible blade, so every
+  // month is the same distance from its tip direction.
+  const LRX = R1 + 26;
+  const LRY = R1 + 26;
   const shown = hover != null && data.blades[hover].perFlight ? data.blades[hover] : null;
   // One reference ring only — the fleet average. Four concentric scale rings
   // read as a cage of borders around the blades.
@@ -80,7 +84,7 @@ export function RadialBladeChart({ theme, title = "Fuel Burn per Flight", icon, 
         <div style={{ height: "100%", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <svg viewBox={`0 0 ${S_W} ${S_H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "100%" }} role="img" aria-label="Fuel burn per flight by month">
             <defs>
-              <linearGradient id="ff-hub" x1="0" y1="0" x2="1" y2="1">
+              <linearGradient id={`${uid}-hub`} x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor={onBrand ? (t.series?.at(-1) || "#334155") : "#2E1065"} />
                 <stop offset="100%" stopColor={onBrand ? (t.series?.at(-2) || "#64748B") : "#7C3AED"} />
               </linearGradient>
@@ -110,7 +114,7 @@ export function RadialBladeChart({ theme, title = "Fuel Burn per Flight", icon, 
               // Anchor shifts from "start" to "end" past the horizontal
               // midline so labels on the left of the fan don't run back
               // over the blades themselves.
-              const anchor = Math.cos(rad) > 0.15 ? "start" : Math.cos(rad) < -0.15 ? "end" : "middle";
+              const anchor = Math.cos(rad) > 0.3 ? "start" : Math.cos(rad) < -0.3 ? "end" : "middle";
 
               return (
                 <g key={b.label} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
@@ -123,7 +127,7 @@ export function RadialBladeChart({ theme, title = "Fuel Burn per Flight", icon, 
                   />
                   <text
                     x={lx} y={ly} textAnchor={anchor} dominantBaseline="central"
-                    style={{ ...MONO, fontSize: lit || isPeak ? 28 : 22, fontWeight: lit || isPeak ? 700 : 600, fill: !has ? t.text.muted : onBrand ? t.text.primary : lit ? t.text.primary : isPeak ? NEG : t.text.secondary }}
+                    style={{ ...MONO, fontSize: lit || isPeak ? 24 : 21, fontWeight: lit || isPeak ? 700 : 600, fill: !has ? t.text.muted : onBrand ? t.text.primary : lit ? t.text.primary : isPeak ? NEG : t.text.secondary }}
                   >
                     {b.label}
                   </text>
@@ -135,11 +139,11 @@ export function RadialBladeChart({ theme, title = "Fuel Burn per Flight", icon, 
             <circle cx={CX} cy={CY} r={avgR} fill="none" stroke={t.text.secondary} strokeWidth="1.2" strokeDasharray="4 4" opacity="0.75" />
 
             {/* hub */}
-            <circle cx={CX} cy={CY} r={R0 - 3} fill="url(#ff-hub)" stroke="rgba(255,255,255,0.28)" strokeWidth="1" />
-            <text x={CX} y={CY - 2} textAnchor="middle" style={{ ...MONO, fontSize: 34, fontWeight: 700, fill: "#ffffff" }}>
+            <circle cx={CX} cy={CY} r={R0 - 3} fill={`url(#${uid}-hub)`} stroke="rgba(255,255,255,0.28)" strokeWidth="1" />
+            <text x={CX} y={CY + 4} textAnchor="middle" style={{ ...MONO, fontSize: 36, fontWeight: 700, fill: "#ffffff" }}>
               {compact(shown ? shown.perFlight : data.avg)}
             </text>
-            <text x={CX} y={CY + 16} textAnchor="middle" style={{ ...MONO, fontSize: 13, letterSpacing: "0.08em", fill: "rgba(255,255,255,0.85)" }}>
+            <text x={CX} y={CY + 26} textAnchor="middle" style={{ ...MONO, fontSize: 13, letterSpacing: "0.08em", fill: "rgba(255,255,255,0.85)" }}>
               {shown ? shown.label.toUpperCase() : "AVERAGE"}
             </text>
           </svg>

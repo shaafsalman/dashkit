@@ -25,7 +25,9 @@ if (!Comp) {
   el.textContent = "unknown component: " + cfg.component +
     "  |  available: " + Object.keys(DK).filter(k => /Chart|Card|Grid|Tiles|Panels|Gauge/.test(k)).join(", ");
 } else {
-  createRoot(el).render(<Comp {...(cfg.props || {})} />);
+  // `boxHeight` gives "fill"-sized charts a real box to fill
+  const node = <Comp {...(cfg.props || {})} />;
+  createRoot(el).render(cfg.boxHeight ? <div style={{ height: cfg.boxHeight }}>{node}</div> : node);
   // let charts finish their entry animation before the screenshot
   setTimeout(() => { document.title = "READY"; }, 1200);
 }

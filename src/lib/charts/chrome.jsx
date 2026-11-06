@@ -112,6 +112,21 @@ if (typeof document !== "undefined" && !document.getElementById("cc-css")) {
     .cc-menu{animation:ccMenu .14s ease both}
     @keyframes ccMenu{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
     .cc-fade{animation:ccFade .5s ease both}
+    /* Textured finish: a fine film grain plus a soft top-left sheen, painted
+       under the content (isolation keeps z-index:-1 inside the card). Opt out
+       per card with theme.texture=false. */
+    .cc-card{isolation:isolate}
+    .cc-card.cc-tex::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;
+      background-image:radial-gradient(120% 80% at 0% 0%,var(--cc-sheen,rgba(255,255,255,.55)),transparent 60%),url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size:auto,160px 160px;opacity:var(--cc-grain,.05);mix-blend-mode:multiply}
+    .cc-card.cc-tex.cc-dark::before{mix-blend-mode:screen;--cc-sheen:rgba(255,255,255,.07)}
+    .cc-card.cc-tex.cc-dark::before{background-image:radial-gradient(120% 80% at 0% 0%,rgba(255,255,255,.10),transparent 60%),url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");opacity:var(--cc-grain,.09)}
+    /* Monotone safety net: charts map their series onto the greyscale ramp
+       themselves (toneColor); this catches anything left — gradients, icons,
+       hard-coded highlight hues — so a mono card is strictly black & white. */
+    .cc-card.cc-mono{filter:grayscale(1)}
+    /* svg text stays crisp and tabular so value labels line up column-wise */
+    .cc-body svg text{font-variant-numeric:tabular-nums}
     @keyframes ccFade{from{opacity:0}to{opacity:1}}`;
   document.head.appendChild(s);
 }
@@ -306,7 +321,7 @@ HeaderControls.displayName = "HeaderControls";
 export const ChangePill = memo(({ value = 0, color, theme: t }) => {
   const up = value >= 0;
   const Arrow = up ? ArrowUp : ArrowDown;
-  const c = color || (up ? "#10B981" : "#f43f5e");
+  const c = color || (t?.mono ? t.text.primary : up ? "#10B981" : "#f43f5e");
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 2, color: c, fontSize: 13, fontWeight: 700 }}>
       <Arrow size={13} strokeWidth={2.5} />{Math.abs(value)}%
@@ -400,6 +415,7 @@ export const ChartCard = memo(
     // knowing to spread theme internals (`theme={{ ...LIGHT_THEME, radius: 0 }}`).
     // Falls back to the theme's own radius when omitted.
     const cardRadius = radius != null ? radius : t.radius;
+    const [rootRef, rootBox] = useMeasuredBox({ width: 0, height: 99999 });
     const [expanded, setExpanded] = useState(false);
     const [cardActive, setCardActive] = useState(false);
     useEffect(() => {
@@ -413,12 +429,20 @@ export const ChartCard = memo(
 
     const renderBody = (detailed) => (typeof children === "function" ? children({ detailed }) : children);
     const fluid = size === "fill";
+    // Short fill cards (phones, 2x2 bento cells) scale the header down so the
+    // plot keeps the room: smaller title/headline, tighter padding.
+    const short = fluid && rootBox.height < 300;
+    // Width tiers, so one chart reads well from a phone column to a wide
+    // monitor: narrow cards tighten padding and type, wide cards give the
+    // title and headline a little more presence.
+    const narrow = rootBox.width > 0 && rootBox.width < 380;
+    const wide = rootBox.width >= 760;
     const bodyH = SIZES[size] || SIZES.m;
     // `compact` is an explicit override for callers who know a "fill" chart
     // sits in a visually small slot (e.g. half of a grid-rows-2 column) —
     // the `size` string alone can't tell us that, since "fill" says nothing
     // about how much room the slot actually has.
-    const smallChart = compact || size === "xs" || size === "s";
+    const smallChart = compact || size === "xs" || size === "s" || short || (fluid && narrow);
     const controlDensity = compact ? "xs" : smallChart ? "small" : "normal";
     // small cards: put the headline number inline on the right of the header row
     // (instead of a big block above the chart) so the chart gets the vertical room
@@ -429,7 +453,7 @@ export const ChartCard = memo(
       <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexShrink: 0 }}>
         <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1, color: t.text.primary }}>{headline.value}</span>
         {headline.change != null && (
-          <span style={{ fontSize: 11, fontWeight: 700, color: headline.change >= 0 ? "#10B981" : "#f43f5e" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: t.mono ? t.text.secondary : headline.change >= 0 ? "#10B981" : "#f43f5e" }}>
             {headline.change >= 0 ? "+" : ""}{headline.change}%
           </span>
         )}
@@ -470,8 +494,9 @@ export const ChartCard = memo(
       <div
         className="cc-hover-controls"
         style={{
+          position: "absolute", right: "100%", top: "50%", marginRight: 8, marginTop: -14,
           display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
-          opacity: cardActive ? 1 : smallChart ? 0 : 0.3,
+          opacity: cardActive ? 1 : 0,
           transform: cardActive ? "translateY(0)" : "translateY(-2px)",
           pointerEvents: cardActive ? "auto" : "none",
           transition: "opacity .16s ease, transform .16s ease",
@@ -488,11 +513,11 @@ export const ChartCard = memo(
 
     const FloatingValue = floatingHeader && headline ? (
       <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexShrink: 0 }}>
-        <span style={{ fontSize: smallChart ? 22 : 31, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1, color: t.text.primary }}>
+        <span style={{ fontSize: smallChart ? 22 : wide ? 34 : 30, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1, color: t.text.primary }}>
           {headline.value}
         </span>
         {headline.change != null && (
-          <span style={{ fontSize: 12, fontWeight: 700, color: headline.change >= 0 ? "#10B981" : "#f43f5e" }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: t.mono ? t.text.secondary : headline.change >= 0 ? "#10B981" : "#f43f5e" }}>
             {headline.change >= 0 ? "+" : ""}{headline.change}%
           </span>
         )}
@@ -501,7 +526,7 @@ export const ChartCard = memo(
 
     const FloatingRight = floatingHeader && (headline || controls || headerRight || expandable) ? (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
           {(controls || headerRight || expandable) && floatingControlsCluster}
           {FloatingValue}
         </div>
@@ -510,18 +535,18 @@ export const ChartCard = memo(
     ) : null;
 
     const Header = (title || subtitle || floatingHeader || controls || headerRight || expandable) ? (
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: headerMarginBottom }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: short ? Math.min(headerMarginBottom, 6) : headerMarginBottom }}>
+        <div style={{ display: "flex", alignItems: "center", gap: narrow ? 9 : 11, minWidth: 0, flex: 1, minHeight: smallChart ? 24 : 30 }}>
           {icon && (
             <span style={{ display: "flex", alignItems: "center", flexShrink: 0, color: iconColor || t.accent }}>
               {icon}
             </span>
           )}
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             {title && (
               <FitText
                 text={title}
-                maxSize={compact ? 15 : smallChart ? 16 : 20}
+                maxSize={compact ? 15 : smallChart ? 16 : wide ? 21 : 19}
                 style={{ fontWeight: 700, letterSpacing: "-0.02em", color: t.text.primary }}
               />
             )}
@@ -540,12 +565,14 @@ export const ChartCard = memo(
       width: "100%", maxWidth: fluid ? "none" : width, boxSizing: "border-box",
       background: t.surface, backdropFilter: t.backdrop, WebkitBackdropFilter: t.backdrop,
       border: `1px solid ${t.border}`, borderRadius: cardRadius, boxShadow: "none",
-      padding: t.pad, color: t.text.primary,
+      padding: short || narrow ? Math.min(t.pad, 12) : wide ? Math.max(t.pad, 20) : t.pad, color: t.text.primary,
+      ...(t.vars || null),
     };
 
     return (
       <div
-        className={`cc-card ${className}`}
+        ref={rootRef}
+        className={`cc-card ${t.texture === false ? "" : "cc-tex"} ${t.mode === "light" ? "" : "cc-dark"} ${t.mono ? "cc-mono" : ""} ${className}`}
         onMouseEnter={() => setCardActive(true)}
         onMouseLeave={() => setCardActive(false)}
         onFocusCapture={() => setCardActive(true)}
@@ -576,7 +603,7 @@ export const ChartCard = memo(
           >
             <div
               onClick={(e) => e.stopPropagation()}
-              style={{ width: "min(1040px, 96vw)", maxHeight: "92vh", overflow: "auto", background: t.mode === "light" ? "#ffffff" : "#1a1f2e", color: t.text.primary, border: `1px solid ${t.border}`, borderRadius: radius != null ? radius : Math.max(t.radius, 20), boxShadow: "0 40px 90px -30px rgba(0,0,0,0.55)", padding: 28 }}
+              style={{ width: "min(1040px, 96vw)", maxHeight: "92vh", overflow: "auto", background: t.mono ? t.surface : t.mode === "light" ? "#ffffff" : "#1a1f2e", ...(t.vars || null), color: t.text.primary, border: `1px solid ${t.border}`, borderRadius: radius != null ? radius : Math.max(t.radius, 20), boxShadow: "0 40px 90px -30px rgba(0,0,0,0.55)", padding: 28 }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
                 <div>

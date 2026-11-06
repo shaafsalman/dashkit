@@ -1,4 +1,4 @@
-import React, { useMemo, memo, useState } from "react";
+import React, { useMemo, memo, useState, useId } from "react";
 import { resolveTheme } from "./theme";
 import { ChartCard, ChartTooltip } from "./chrome";
 import { useMeasuredBox } from "./useMeasuredBox";
@@ -32,6 +32,7 @@ const ResponseRatePanels = memo(
     className = "",
   }) => {
     const t = resolveTheme(theme, "light");
+    const uid = useId().replace(/:/g, "");
     const [hover, setHover] = useState(null); // panel key
     const [sort, setSort] = useState("none"); // none | asc | desc
     const [panelRef, panelBox] = useMeasuredBox({ width: 560, height: 320 });
@@ -66,13 +67,14 @@ const ResponseRatePanels = memo(
     // cut off beneath the card header.
     const top = chartH < 260 ? 56 : 78;
     const base = chartH - 24;
+    const padR = 6; // keeps the last panel's cap stroke inside the svg
     const panels = useMemo(() => {
       const gap = Math.max(8, Math.min(26, chartW * 0.022));
       const count = Math.max(ordered.length, 1);
-      const panelW = (chartW - axisW - gap * (count - 1)) / count;
+      const panelW = (chartW - padR - axisW - gap * (count - 1)) / count;
       return ordered.map((item, index) => {
         const value = Math.max(0, Math.min(100, Number(item.value) || 0));
-        const color = item.color || t.accent;
+        const color = t.mono ? t.series[index % t.series.length] : item.color || t.accent;
         const x0 = axisW + index * (panelW + gap);
         const x1 = x0 + panelW;
         const visible = Math.max(value, 18);
@@ -86,15 +88,15 @@ const ResponseRatePanels = memo(
           cap: `M ${x0} ${plateauY} L ${shelfX} ${plateauY} L ${x1} ${shelfY}`,
         };
       });
-    }, [ordered, chartW, axisW, base, top, t.accent]);
+    }, [ordered, chartW, axisW, base, top, t.accent, padR]);
 
     const renderPanels = () => (
       <div ref={panelRef} style={{ position: "relative", height: "100%", minHeight: 180 }}>
         <svg viewBox={`0 0 ${chartW} ${chartH}`} width="100%" height="100%" role="img" aria-label={title} style={{ display: "block" }}>
-          <defs>{panels.map((panel) => <linearGradient key={panel._i} id={`rr-${panel._i}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={panel.color} stopOpacity="0.46" /><stop offset="100%" stopColor={panel.color} stopOpacity="0.04" /></linearGradient>)}</defs>
+          <defs>{panels.map((panel) => <linearGradient key={panel._i} id={`${uid}-rr-${panel._i}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={panel.color} stopOpacity="0.46" /><stop offset="100%" stopColor={panel.color} stopOpacity="0.04" /></linearGradient>)}</defs>
           {[0, 25, 50, 75, 100].map((tick) => {
             const y = base - ((base - top) * tick) / 100;
-            return <g key={tick}><line x1={axisW} y1={y} x2={chartW} y2={y} stroke={t.grid} strokeDasharray="4 5" /><text x={axisW - 7} y={y + 4} textAnchor="end" fontSize="10" fontFamily="'JetBrains Mono', monospace" fill={t.text.muted}>{tick}%</text></g>;
+            return <g key={tick}><line x1={axisW} y1={y} x2={chartW - padR} y2={y} stroke={t.grid} strokeDasharray="4 5" /><text x={axisW - 7} y={y + 4} textAnchor="end" fontSize="10" fontFamily="'JetBrains Mono', monospace" fill={t.text.muted}>{tick}%</text></g>;
           })}
           {panels.map((panel) => {
             const active = hover == null || hover === panel._i;
@@ -102,7 +104,7 @@ const ResponseRatePanels = memo(
             const valueY = Math.max(labelSize + 5, panel.plateauY - 28);
             const captionY = Math.max(labelSize + 22, panel.plateauY - 8);
             return <g key={panel._i} opacity={active ? 1 : 0.42} style={{ transition: "opacity .18s ease" }}>
-              <path d={panel.fill} fill={`url(#rr-${panel._i})`} />
+              <path d={panel.fill} fill={`url(#${uid}-rr-${panel._i})`} />
               <line x1={panel.x0} y1={panel.plateauY} x2={panel.x0} y2={base} stroke={panel.color} strokeWidth="1.25" strokeDasharray="2 5" opacity="0.45" />
               <line x1={panel.shelfX} y1={panel.plateauY} x2={panel.shelfX} y2={base} stroke={panel.color} strokeWidth="1.25" strokeDasharray="2 5" opacity="0.35" />
               <path d={panel.cap} fill="none" stroke={panel.color} strokeWidth={hover === panel._i ? 5 : 3.5} strokeLinejoin="round" strokeLinecap="round" />

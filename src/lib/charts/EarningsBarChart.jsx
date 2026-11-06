@@ -56,12 +56,15 @@ const DEFAULT_PERIODS = [
 
 const fmtMoney = (v) => compactCurrency(v);
 
+// Sits in the plot's right gutter, vertically centred on the line, so it can
+// never collide with a bar or its value label.
+const REF_GUTTER = 44;
 const ReferenceValueLabel = ({ viewBox, value, fill }) => {
   if (!viewBox) return null;
-  const x = (viewBox.x || 0) + (viewBox.width || 0) - 5;
-  const y = (viewBox.y || 0) - 6;
+  const x = (viewBox.x || 0) + (viewBox.width || 0) + 6;
+  const y = viewBox.y || 0;
   return (
-    <text x={x} y={y} textAnchor="end" fill={fill} fontSize="11" fontWeight="700">
+    <text x={x} y={y} dy="0.35em" textAnchor="start" fill={fill} fontSize="11" fontWeight="700">
       {value}
     </text>
   );
@@ -77,7 +80,7 @@ const EarningsBarChart = memo(
     controls,
     onControl,
     periods = DEFAULT_PERIODS,
-    refLine = { value: 720, label: "$ 720" },
+    refLine = { value: 720, label: "$720" },
     yMax = 2000,
     yTicks,
     accent = "#1f6fe5",
@@ -89,6 +92,7 @@ const EarningsBarChart = memo(
     className = "",
   }) => {
     const t = resolveTheme(theme || DEFAULT_THEME, "light");
+    if (t.mono) { accent = t.series[0]; accentBright = t.series[0]; accentDark = t.series[1]; }
     const [period, setPeriod] = useState(periods[0]?.value);
 
     const active = useMemo(
@@ -131,11 +135,12 @@ const EarningsBarChart = memo(
           {/* recharts */}
           <div style={{ height: chartH, flex: fluid ? 1 : undefined, minHeight: fluid ? 120 : undefined, marginRight: -1, marginBottom: -10 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 24, right: 4, bottom: 0, left: 8 }} barCategoryGap="24%">
+              <BarChart data={chartData} margin={{ top: 24, right: refLine ? REF_GUTTER : 4, bottom: 0, left: 8 }} barCategoryGap="24%">
                 <CartesianGrid {...AXIS_GRID_PROPS} stroke={t.grid} vertical={false} />
                 <XAxis
                   dataKey="label"
-                  tick={{ ...AXIS_CATEGORY_TICK, fontSize: 12, fill: t.text.muted }}
+                  interval={0}
+                  tick={{ ...AXIS_CATEGORY_TICK, fontSize: chartData.length > 6 ? 10.5 : 12, fill: t.text.muted }}
                   {...AXIS_LINE_PROPS}
                 />
                 <YAxis

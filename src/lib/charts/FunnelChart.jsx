@@ -1,5 +1,5 @@
 import React, { useMemo, memo, useState, useId } from "react";
-import { resolveTheme, lighten, darken, contrastingText } from "./theme";
+import { resolveTheme, lighten, darken, contrastingText, seriesColor } from "./theme";
 import { ChartCard, ChartTooltip } from "./chrome";
 import { useMeasuredBox } from "./useMeasuredBox";
 import { compactNumber } from "./format";
@@ -95,14 +95,14 @@ const FunnelChart = memo(
         return {
           label: s.label,
           value,
-          color: s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length],
+          color: seriesColor(t, s.color, i, DEFAULT_COLORS[i % DEFAULT_COLORS.length]),
           ratio: v0 > 0 ? Math.min(Math.max(value / v0, 0), 1) : 0,
           pct: v0 > 0 ? Math.round((value / v0) * 100) : 0,
           lostAbs: prev != null ? prev - value : 0,
           dropPct: prev != null && prev > 0 ? Math.round((1 - value / prev) * 100) : null,
         };
       });
-    }, [stages]);
+    }, [stages, t.mono, t.series, t.customSeries]);
 
     // Default headline is the top-of-funnel value — the largest number, and
     // the one every stage below is a share of.
@@ -191,7 +191,7 @@ const FunnelChart = memo(
               >
                 <path
                   d={`M ${cx - wTop / 2} ${top} L ${cx + wTop / 2} ${top} L ${cx + wBot / 2} ${bot} L ${cx - wBot / 2} ${bot} Z`}
-                  fill={r.value < 0 ? LOSS : `url(#fn-${uid}-${i})`}
+                  fill={r.value < 0 ? (t.mono ? t.text.muted : LOSS) : `url(#fn-${uid}-${i})`}
                 />
                 {/* label — top-left corner */}
                 <text x={topLeftX} y={topTextY} textAnchor="start" fontFamily={SANS} fontSize={labelPx} fontWeight={600} letterSpacing="-0.01em" fill={bandInk} pointerEvents="none">
@@ -269,7 +269,7 @@ const FunnelChart = memo(
                     </td>
                     <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: MONO, fontWeight: 600 }}>{fmt(r.value)}</td>
                     <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: MONO }}>{r.pct}%</td>
-                    <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: MONO, color: r.dropPct ? LOSS_TEXT : t.text.muted }}>
+                    <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: MONO, color: r.dropPct ? (t.mono ? t.text.secondary : LOSS_TEXT) : t.text.muted }}>
                       {r.dropPct != null ? `−${r.dropPct}% · −${fmt(r.lostAbs)}` : "—"}
                     </td>
                   </tr>

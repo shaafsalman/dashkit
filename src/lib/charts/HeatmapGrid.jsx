@@ -1,6 +1,7 @@
 import React, { useMemo, memo } from "react";
 import { resolveTheme } from "./theme";
 import { ChartCard } from "./chrome";
+import { useMeasuredBox } from "./useMeasuredBox";
 
 /**
  * HeatmapGrid — activity heatmap (weeks x days), intensity = accent opacity.
@@ -34,6 +35,22 @@ const HeatmapGrid = memo(
 
     const levels = [0.12, 0.34, 0.56, 0.78, 1];
 
+    // Square cells sized to whichever axis is tighter, so the full grid always
+    // fits the box (no clipped columns on phones) and sits centred in it.
+    const [boxRef, box] = useMeasuredBox({ width: 320, height: 160 });
+    const gap = box.width < 420 ? 3 : 4;
+    // On narrow cards keep cells readable (>= 14px) by showing only the most
+    // recent columns that fit, rather than shrinking all of them to specks.
+    const MIN_CELL = 14;
+    const visCols = Math.max(1, Math.min(columns, Math.floor((box.width + gap) / (MIN_CELL + gap))));
+    const cell = Math.max(4, Math.floor(Math.min(
+      (box.width - gap * (visCols - 1)) / visCols,
+      (box.height - gap * (rows - 1)) / rows,
+    )));
+    const shown = cells
+      .map((v, i) => ({ v, i, col: i % columns }))
+      .filter((c) => c.col >= columns - visCols);
+
     return (
       <ChartCard
         theme={t}
@@ -56,14 +73,16 @@ const HeatmapGrid = memo(
           </div>
         }
       >
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gridAutoRows: "1fr", gap: 4 }}>
-          {cells.map((v, i) => (
-            <div
-              key={i}
-              title={`${Math.round(v * 100)}%`}
-              style={{ aspectRatio: "1 / 1", borderRadius: 3, background: v < 0.06 ? t.track : color, opacity: v < 0.06 ? 0.5 : 0.18 + 0.82 * v }}
-            />
-          ))}
+        <div ref={boxRef} style={{ height: size === "fill" ? "100%" : "var(--cc-h)", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${visCols}, ${cell}px)`, gridAutoRows: `${cell}px`, gap }}>
+            {shown.map(({ v, i }) => (
+              <div
+                key={i}
+                title={`${Math.round(v * 100)}%`}
+                style={{ borderRadius: Math.max(2, cell / 5), background: v < 0.06 ? t.track : color, opacity: v < 0.06 ? 0.5 : 0.18 + 0.82 * v }}
+              />
+            ))}
+          </div>
         </div>
       </ChartCard>
     );

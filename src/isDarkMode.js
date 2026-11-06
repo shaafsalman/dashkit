@@ -16,3 +16,19 @@ export const isDarkMode = () =>
   typeof document !== "undefined" && document.documentElement.classList.contains("dark");
 
 export default isDarkMode;
+
+/**
+ * Page-wide monotone (black & white) switch, same convention as dark mode:
+ * a `chart-mono` class on <html>. While it is set, every chart resolves to
+ * the greyscale "mono" theme (white/black ink on the live light/dark
+ * surface) unless that chart opts out with `theme={{ tone: "color" }}`.
+ * Like dark mode, charts read it at render time — remount the chart tree
+ * (e.g. `key={tone}`) after toggling.
+ */
+export const isMonotone = () =>
+  typeof document !== "undefined" && document.documentElement.classList.contains("chart-mono");
+
+export const setChartTone = (tone) => {
+  if (typeof document === "undefined") return;
+  document.documentElement.classList.toggle("chart-mono", tone === "mono");
+};

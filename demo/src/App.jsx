@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   DollarSign, Users, TrendingUp, Percent, Route, Gauge, Plane, Fuel,
   Trophy, MapPin, LayoutGrid, Table2, Boxes, Globe2,
-  ChevronsLeft, ChevronsRight, Sun, Moon, SlidersHorizontal,
+  ChevronsLeft, ChevronsRight, Sun, Moon, SlidersHorizontal, Contrast,
   ShoppingBag, MousePointerClick, UserPlus, CreditCard, Activity,
   ChevronDown, ChevronLeft, ChevronRight, Check, Copy, Code2,
   CalendarDays, FlaskConical, Stethoscope, Pill, ScanLine, FileText, HeartPulse, ShieldAlert,
@@ -58,6 +58,7 @@ import {
   SECTIONS,
   AIRPORT_TO_COUNTRY,
   AIRPORT_TO_NAME,
+  setChartTone,
 } from "dashkit";
 import * as D from "./dummyData.js";
 
@@ -1165,10 +1166,23 @@ function useDarkMode() {
   return [dark, toggleDark];
 }
 
+// Page-wide black & white switch — the library's `chart-mono` class on <html>
+// (setChartTone), mirrored the same way as dark mode above.
+function useMonotone() {
+  const [mono, setMono] = useState(() => document.documentElement.classList.contains("chart-mono"));
+  const toggleMono = () => {
+    const next = !mono;
+    setChartTone(next ? "mono" : "color");
+    setMono(next);
+  };
+  return [mono, toggleMono];
+}
+
 export default function App() {
   const [page, setPage] = useState("studio");
   const [collapsed, setCollapsed] = useState(false);
   const [dark, toggleDark] = useDarkMode();
+  const [mono, toggleMono] = useMonotone();
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#141414] lg:flex">
@@ -1219,6 +1233,15 @@ export default function App() {
           <span className={`hidden sm:inline ${collapsed ? "lg:hidden" : ""}`}>{dark ? "Light mode" : "Dark mode"}</span>
         </button>
 
+        <button
+          onClick={toggleMono}
+          title={collapsed ? (mono ? "Switch to colour" : "Switch to black & white") : undefined}
+          className={`absolute right-24 top-3 flex items-center gap-2 rounded px-3 py-2 text-left text-[13px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10 lg:static lg:mt-1 lg:w-full ${collapsed ? "lg:justify-center lg:px-2" : ""}`}
+        >
+          <Contrast size={15} className="flex-shrink-0" />
+          <span className={`hidden sm:inline ${collapsed ? "lg:hidden" : ""}`}>{mono ? "Colour" : "Black & white"}</span>
+        </button>
+
         {!collapsed && (
           <div className="mt-8 hidden text-[10px] leading-relaxed text-gray-400 lg:block">
             Deterministic sample data. No network calls or product-specific assumptions.
@@ -1228,7 +1251,7 @@ export default function App() {
       {/* key forces a full remount on theme toggle — most chart components
           are memoized and read isDarkMode() once at render time, so without
           this they'd keep their stale colors after the .dark class flips. */}
-      <main key={dark ? "dark" : "light"} className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:max-h-screen">
+      <main key={`${dark ? "dark" : "light"}-${mono ? "mono" : "color"}`} className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:max-h-screen">
         {page === "studio" && <StudioDemo />}
         {page === "overview" && <OverviewDemo />}
         {page === "sizes" && <SizesDemo />}

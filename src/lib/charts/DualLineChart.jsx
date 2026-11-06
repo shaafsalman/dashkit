@@ -1,8 +1,9 @@
-import React, { useMemo, memo, useState, useRef } from "react";
+import React, { useMemo, memo, useState, useRef, useId } from "react";
 import { createPortal } from "react-dom";
 import { resolveTheme, AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_LINE_PROPS, AXIS_GRID_PROPS } from "./theme";
 import { ChartCard, Stat, SIZES } from "./chrome";
-import { compactCurrency } from "./format";
+import { compactCurrency, thinTickIndices } from "./format";
+import { useMeasuredBox } from "./useMeasuredBox";
 import {
   ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -82,7 +83,7 @@ const DualLineChart = memo(
     // in the card's own header cluster, freeing that space for the total.
     legendPortal = null,
   }) => {
-    const uid = useRef(`dl-${Math.random().toString(36).slice(2, 6)}`).current;
+    const uid = useId().replace(/:/g, "");
     const t = resolveTheme(theme, "light");
     const fmt = formatValue || fmtMoneyDefault;
     const [period, setPeriod] = useState("monthly");
@@ -91,24 +92,27 @@ const DualLineChart = memo(
     // into one shape everything below operates on. This is the ONLY place
     // that knows which prop shape the caller used.
     const baseSeriesList = useMemo(() => {
+      // Monotone themes ignore per-series hues: the primary (last) series takes
+      // the ramp's first colour, the rest follow in order.
+      const monoColor = (rank) => t.series[rank % t.series.length];
       if (multiSeries && multiSeries.length > 0) {
         return multiSeries.map((s, i) => ({
           key: s.key ?? s.label ?? `series-${i}`,
           label: s.label,
-          color: s.color,
+          color: t.mono ? monoColor(multiSeries.length - 1 - i) : s.color,
           values: s.values,
           dashed: s.dashed ?? i < multiSeries.length - 1,
           area: i === multiSeries.length - 1,
         }));
       }
       if (singleSeries) {
-        return [{ key: "after", label: after.label, color: after.color, values: after.values, dashed: false, area: true }];
+        return [{ key: "after", label: after.label, color: t.mono ? monoColor(0) : after.color, values: after.values, dashed: false, area: true }];
       }
       return [
-        { key: "before", label: before.label, color: before.color, values: before.values, dashed: true, area: false },
-        { key: "after", label: after.label, color: after.color, values: after.values, dashed: false, area: true },
+        { key: "before", label: before.label, color: t.mono ? monoColor(1) : before.color, values: before.values, dashed: true, area: false },
+        { key: "after", label: after.label, color: t.mono ? monoColor(0) : after.color, values: after.values, dashed: false, area: true },
       ];
-    }, [multiSeries, before, after, singleSeries]);
+    }, [multiSeries, before, after, singleSeries, t.mono, t.series]);
 
     const isMulti = baseSeriesList.length > 2 || (multiSeries && multiSeries.length > 0);
 
@@ -142,6 +146,7 @@ const DualLineChart = memo(
     const secondaries = seriesList.slice(0, -1);
 
     // Null-out 0-valued months so Recharts breaks the line instead of spiking to 0
+    const [plotRef, plotBox] = useMeasuredBox({ width: 420, height: 200 });
     const chartData = useMemo(() => curLabels.map((label, i) => {
       const row = { label };
       seriesList.forEach((s) => {
@@ -318,7 +323,7 @@ const DualLineChart = memo(
                 const reported = rawValues.map((rv) => rv !== null && rv !== undefined && Number(rv) !== 0);
                 const nums = rawValues.map((rv) => Number(rv || 0));
                 const delta = showDelta ? nums[1] - nums[0] : 0;
-                const deltaColor = delta >= 0 ? "#10B981" : "#f43f5e";
+                const deltaColor = t.mono ? t.text.primary : delta >= 0 ? "#10B981" : "#f43f5e";
                 return (
                   <tr
                     key={lb}
@@ -356,10 +361,14 @@ const DualLineChart = memo(
 
     const renderChart = (detailed) => {
       const fillMode = size === "fill" && !detailed;
+      // even x-tick rhythm: smallest regular step whose labels don't collide
+      const plotW = Math.max(1, (detailed ? 960 : plotBox.width) - 44);
+      const picked = [...thinTickIndices(chartData.length, plotW / Math.max(1, chartData.length), chartData.map((d) => d.label), 12, 10)];
+      const xInterval = picked.length > 1 ? picked[1] - picked[0] - 1 : 0;
       const chartH = detailed ? 260 : (fillMode ? undefined : (SIZES[size] ?? SIZES.m));
       return (
         <div style={{ position: "relative", ...(fillMode ? { display: "flex", flexDirection: "column", height: "100%" } : {}) }}>
-          <div style={{ ...(fillMode ? { flex: 1, minHeight: 0 } : { height: chartH }), width: "100%", marginLeft: -6, marginRight: -1, marginBottom: -10 }}>
+          <div ref={detailed ? undefined : plotRef} style={{ ...(fillMode ? { flex: 1, minHeight: 0 } : { height: chartH }), width: "100%", marginLeft: -6, marginRight: -1, marginBottom: -10 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
                 <defs>
@@ -376,6 +385,8 @@ const DualLineChart = memo(
                 <CartesianGrid {...AXIS_GRID_PROPS} stroke={t.grid} vertical={false} />
                 <XAxis
                   dataKey="label"
+                  interval={xInterval}
+                  padding={{ left: 6, right: 6 }}
                   tick={{ ...AXIS_CATEGORY_TICK, fill: t.text.secondary }}
                   {...AXIS_LINE_PROPS}
                 />

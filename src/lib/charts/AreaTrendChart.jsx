@@ -1,8 +1,8 @@
-import React, { useMemo, useState, memo } from "react";
-import { resolveTheme, AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_GRID_PROPS } from "./theme";
+import React, { useMemo, useState, memo, useId } from "react";
+import { resolveTheme, AXIS_CATEGORY_TICK, AXIS_VALUE_TICK, AXIS_GRID_PROPS, toneColor } from "./theme";
 import { ChartCard, ChartTooltip, Stat } from "./chrome";
 import { useMeasuredBox } from "./useMeasuredBox";
-import { compactNumber } from "./format";
+import { compactNumber, thinTickIndices } from "./format";
 
 /**
  * AreaTrendChart — single smooth gradient area with an emphasized endpoint dot.
@@ -33,12 +33,12 @@ const FIXED_VBH = 244;
 const FIXED_PT = 20;
 const FIXED_PB = 230;
 const FIXED_PL = 42;
-const FIXED_PR = 8;
+const FIXED_PR = 18;
 
 // Small FIXED PIXEL margins for the responsive ("fill") path — these do NOT
 // scale with chart size the way viewBox-unit margins did, which is exactly
 // what kept them proportionate at 244px tall and huge at 900px tall.
-const MARGIN = { top: 28, right: 16, bottom: 34, left: 52 };
+const MARGIN = { top: 28, right: 20, bottom: 34, left: 52 };
 
 const fmtDefault = (v) => compactNumber(v);
 const smooth = (pts) => {
@@ -88,9 +88,10 @@ const AreaTrendChart = memo(
     radius,
   }) => {
     const t = resolveTheme(theme, "dark");
-    const color = accent || t.accent;
+    const color = toneColor(t, accent || t.accent, 0);
     const fmt = formatValue || fmtDefault;
 
+    const uid = useId().replace(/:/g, "");
     const [period, setPeriod] = useState("monthly");
     const [hover, setHover] = useState(null); // index of hovered datum
 
@@ -103,7 +104,7 @@ const AreaTrendChart = memo(
     const [boxRef, box] = useMeasuredBox({ width: FIXED_W, height: FIXED_VBH });
     // Match both measured dimensions in fill mode. A shorter viewBox painted
     // into a full-height SVG with preserveAspectRatio="none" stretched text.
-    const plotHeight = isFill ? Math.max(120, Math.round(box.height)) : FIXED_VBH;
+    const plotHeight = isFill ? Math.max(100, Math.round(box.height)) : FIXED_VBH;
 
     // Fixed sizes keep the original designed viewBox; "fill" tracks the
     // real container so nothing ever gets letterboxed inside it.
@@ -137,6 +138,14 @@ const AreaTrendChart = memo(
       return { line, area, pts, end: pts[pts.length - 1], min, span };
     }, [vals, W, VBH, PT, PB, PL, PR]);
 
+    // Category ticks: first + last always, then the smallest regular step whose
+    // measured label width fits between neighbours (never overlaps).
+    const tickSet = thinTickIndices(
+      lbls.length,
+      (W - PL - PR) / Math.max(lbls.length - 1, 1),
+      lbls,
+      AXIS_CATEGORY_TICK.fontSize
+    );
     const xAt = (i) => PL + (i * (W - PL - PR)) / Math.max(vals.length - 1, 1);
 
     // map a mouse event to the nearest datapoint index. viewBox units equal
@@ -277,13 +286,13 @@ const AreaTrendChart = memo(
                 aria-label={title}
               >
                 <defs>
-                  <linearGradient id="at-fill" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id={`${uid}-fill`} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={color} stopOpacity="0.32" />
                     <stop offset="100%" stopColor={color} stopOpacity="0" />
                   </linearGradient>
                 </defs>
                 {/* Y-axis gridlines + labels */}
-                {[0, 0.25, 0.5, 0.75, 1].map((f, i) => {
+                {(PB - PT < 110 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1]).map((f, i) => {
                   const yv = PB - f * (PB - PT);
                   const val = vmin + f * span;
                   return (
@@ -293,7 +302,7 @@ const AreaTrendChart = memo(
                     </g>
                   );
                 })}
-                <path d={area} fill="url(#at-fill)" />
+                <path d={area} fill={`url(#${uid}-fill)`} />
                 <path d={line} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
 
                 {/* detailed: value above every point */}
@@ -326,17 +335,13 @@ const AreaTrendChart = memo(
                     became an unreadable smear — show at most ~8, always
                     including the first and last so the range stays readable. */}
                 {lbls.map((lb, i) => {
-                  const step = Math.max(1, Math.ceil(lbls.length / 8));
-                  const isEdge = i === 0 || i === lbls.length - 1;
-                  if (!isEdge && i % step !== 0) return null;
-                  // Drop a tick adjacent to the last one to avoid overlap.
-                  if (!isEdge && lbls.length - 1 - i < step * 0.6) return null;
+                  if (!tickSet.has(i)) return null;
                   return (
                     <text
                       key={`${lb}-${i}`}
                       x={xAt(i)}
                       y={PB + 18}
-                      textAnchor={i === 0 ? "start" : i === lbls.length - 1 ? "end" : "middle"}
+                      textAnchor="middle"
                       {...AXIS_CATEGORY_TICK}
                       fill={t.text.secondary}
                     >

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, memo } from "react";
-import { resolveTheme, arcPath, polar } from "./theme";
+import { resolveTheme, arcPath, polar, toneColor } from "./theme";
 import { ChartCard, Legend, ChartTooltip, Stat } from "./chrome";
 
 /**
@@ -12,6 +12,9 @@ import { ChartCard, Legend, ChartTooltip, Stat } from "./chrome";
  */
 const SIZE = 240;
 const C = SIZE / 2;
+// A 270deg sweep leaves the bottom quarter open: rings span y 7..C+outer*sin45+6,
+// so the viewBox is trimmed to that span and the rings sit centred in the card.
+const VBH = SIZE - 30;
 const START = 135;
 const SWEEP = 270;
 
@@ -36,7 +39,7 @@ const RadialBarsChart = memo(
 
     // stable color per item (by original index)
     const colored = useMemo(
-      () => items.map((it, i) => ({ ...it, color: it.color || t.series[i % t.series.length] })),
+      () => items.map((it, i) => ({ ...it, color: toneColor(t, it.color || t.series[i % t.series.length], i) })),
       [items, t.series]
     );
 
@@ -192,7 +195,7 @@ const RadialBarsChart = memo(
       >
         {({ detailed }) => (
           <div style={{ position: "relative" }}>
-            <svg viewBox={`0 0 ${SIZE} ${SIZE}`} width="100%" role="img" aria-label={title}>
+            <svg viewBox={`0 0 ${SIZE} ${VBH}`} width="100%" role="img" aria-label={title}>
               {rings.map((r, i) => {
                 const dim = hover != null && hover !== i;
                 return (
@@ -213,6 +216,19 @@ const RadialBarsChart = memo(
                   </g>
                 );
               })}
+
+              {/* centre readout: hovered ring, else the average across rings */}
+              {/* only when the innermost ring leaves room (<= 3 rings) */}
+              {overallStats && rings.length <= 3 && (
+                <g pointerEvents="none">
+                  <text x={C} y={C + 6} textAnchor="middle" fontSize="24" fontWeight="800" letterSpacing="-0.6" fill={hovered ? hovered.color : t.text.primary}>
+                    {hovered ? hovered.value : Math.round(overallStats.avg)}%
+                  </text>
+                  <text x={C} y={C + 22} textAnchor="middle" fontSize="8.5" fontWeight="700" letterSpacing="0.8" fill={t.text.muted}>
+                    {(hovered ? hovered.label : "Average").toUpperCase()}
+                  </text>
+                </g>
+              )}
 
               {/* detailed mode: value% label on each ring (at the arc midpoint) */}
               {detailed &&
@@ -236,7 +252,7 @@ const RadialBarsChart = memo(
               theme={t}
               visible={!!hovered}
               left={hovered ? `${(hovered.end[0] / SIZE) * 100}%` : "50%"}
-              top={hovered ? `${(hovered.end[1] / SIZE) * 100}%` : "50%"}
+              top={hovered ? `${(hovered.end[1] / VBH) * 100}%` : "50%"}
               title={hovered ? hovered.label : ""}
               rows={hovered ? [{ label: "Progress", value: `${hovered.value}%`, color: hovered.color }] : []}
             />
