@@ -1,0 +1,9 @@
+{
+  "name": "dashkit-organs-playground",
+  "private": true,
+  "description": "The organ library's playground has its own dependencies, so the kit's root package.json stays untouched while these are tried out.",
+  "type": "module",
+  "dependencies": {
+    "@niivue/niivue": "0.69.0"
+  }
+}

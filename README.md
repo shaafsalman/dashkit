@@ -14,6 +14,18 @@ Dashkit is a general-purpose component library with 38 charts, data cards, ranke
 
 ![Dashkit Component Studio](docs/images/component-studio.png)
 
+## Medical library
+
+Interactive 3D organs you can break apart, peel and slice; a CT and MR viewer with segmentation overlays; an importer for TotalSegmentator, nnU-Net and MONAI results; and 2D medical images for decoration.
+
+```jsx
+import { Organ } from "dashkit/src/organs";
+
+<Organ name="heart" baseUrl="/organs" />
+```
+
+Read the **[medical library guide](docs/medical-library.md)**. Anatomy data keeps its own licences: see **[NOTICE.md](NOTICE.md)**. Not a medical device.
+
 ## Why Dashkit
 
 - **Stable chart chrome:** titles stay top-left, primary values stay top-right, and the visualization owns the space between them.
@@ -262,4 +274,4 @@ No chart screenshot is a mockup; every image is rendered from the library code i
 
 ## License
 
-Dashkit is available under the [MIT License](LICENSE).
+Dashkit is available under the [MIT License](LICENSE). Anatomy data, sample scans and images under `assets/` keep their own licences: see [NOTICE.md](NOTICE.md).

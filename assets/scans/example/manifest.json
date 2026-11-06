@@ -1,0 +1,13 @@
+{
+  "title": "TotalSegmentator test scans",
+  "about": "Small test scans from TotalSegmentator's own repository, downsampled to 3 mm voxels. A CT from the lower chest to the upper thighs, a 30-slice crop of the same CT, and a short MR crop. Each is paired with the multilabel segmentation that has the same grid.",
+  "credit": "Wasserthal et al., TotalSegmentator. github.com/wasserth/TotalSegmentator, tests/reference_files, Apache-2.0 repository, commit c59be95b.",
+  "licence": "Apache-2.0 (repository licence; the files carry no separate notice)",
+  "notice": "Illustrative test data. Not for diagnosis.",
+  "pairs": [
+    { "id": "ct", "image": "ct.nii.gz", "segmentation": "seg.nii.gz", "source": ["example_ct.nii.gz", "example_seg_fast_force_split.nii.gz"], "shape": [122, 101, 112], "spacingMm": [3, 3, 3], "labels": "total" },
+    { "id": "ct_crop", "image": "ct_crop.nii.gz", "segmentation": "seg_crop.nii.gz", "source": ["example_ct_sm.nii.gz", "example_seg.nii.gz"], "shape": [122, 101, 30], "spacingMm": [3, 3, 3], "labels": "total" },
+    { "id": "mr", "image": "mr.nii.gz", "segmentation": "seg_mr.nii.gz", "source": ["example_mr_sm.nii.gz", "example_seg_mr.nii.gz"], "shape": [117, 91, 20], "spacingMm": [3, 3, 3], "labels": "total_mr" }
+  ],
+  "warning": "example_ct.nii.gz and example_seg.nii.gz share an affine but not a grid: example_seg has 30 slices and matches slices 82 to 111 of example_ct, which is exactly example_ct_sm. Pairing those two puts the organs in the wrong place, so they are not paired here."
+}

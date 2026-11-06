@@ -1,15 +1,16 @@
 {
   "name": "dashkit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "license": "MIT",
-  "description": "Standalone React dashboard component kit — charts (Recharts / Chart.js / ECharts), ranked-data widgets, gradient/solid stat cards, a themed-section system, and a geographic route map — extracted for reuse across projects.",
+  "description": "Standalone React dashboard component kit \u2014 charts (Recharts / Chart.js / ECharts), ranked-data widgets, gradient/solid stat cards, a themed-section system, and a geographic route map \u2014 extracted for reuse across projects.",
   "type": "module",
   "main": "src/index.js",
   "module": "src/index.js",
   "peerDependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "@niivue/niivue": "^0.69.0"
   },
   "dependencies": {
     "chart.js": "^4.4.7",
@@ -17,8 +18,18 @@
     "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.6",
     "lucide-react": "^0.468.0",
+    "motion": "^14.1.0",
     "react-chartjs-2": "^5.3.0",
     "react-simple-maps": "^3.0.0",
-    "recharts": "^2.15.1"
+    "recharts": "^2.15.1",
+    "three": "^0.186.1"
+  },
+  "peerDependenciesMeta": {
+    "@niivue/niivue": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "organs": "cd demo && npx vite --config vite.organs.config.js --port 5199"
   }
 }
