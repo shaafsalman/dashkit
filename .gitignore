@@ -2,3 +2,4 @@ node_modules/
 dist/
 demo/dist-render/
 .DS_Store
+__pycache__/
